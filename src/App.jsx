@@ -13,6 +13,8 @@ import { stateLabels } from "./domain/requests.js";
 import { Brand, Notice, Spinner } from "./components/Common.jsx";
 import Login from "./pages/Login.jsx";
 import Workspace from "./pages/Workspace.jsx";
+import IntakeWorkspace from "./pages/IntakeWorkspace.jsx";
+import { requestStateLabel } from "./api/requests.js";
 import Account from "./pages/Account.jsx";
 import Admin from "./pages/Admin.jsx";
 
@@ -22,6 +24,15 @@ function Shell() {
   const [params] = useSearchParams();
   const [history, setHistory] = useState([]);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  // A draft and its uncertain intake key survive route changes, never logout.
+  const [intakeDraft, setIntakeDraft] = useState({
+    text: "",
+    file: null,
+    attempt: null,
+  });
+  const [historyPaging, setHistoryPaging] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
   const [historyError, setHistoryError] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
@@ -34,22 +45,35 @@ function Shell() {
     // Administrators must never load the employee's request history.
     if (!isEmployee) return;
     let active = true;
+    setHistoryLoading(true);
     auth
-      .run(() => requestApi.list(auth.user))
-      .then((rows) => {
+      .run(async () =>
+        requestMode === "real"
+          ? requestApi.listPage(auth.user, { page: historyPage })
+          : { results: await requestApi.list(auth.user) },
+      )
+      .then((data) => {
         if (active) {
-          setHistory(rows);
+          setHistory(data.results);
+          setHistoryPaging(requestMode === "real" ? data : null);
           setHistoryError("");
         }
       })
       .catch((error) => {
-        if (active) setHistoryError(error.message);
+        if (active) {
+          setHistory([]);
+          setHistoryPaging(null);
+          setHistoryError(error.message);
+        }
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false);
       });
     return () => {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyVersion, auth.user.id, isEmployee]);
+  }, [historyVersion, historyPage, auth.user.id, isEmployee]);
   function select(id) {
     navigate(id ? "/?request=" + encodeURIComponent(id) : "/");
     setMenuOpen(false);
@@ -94,11 +118,18 @@ function Shell() {
         {isEmployee && (
           <>
             <div className="history-title">
-              최근 요청 <span>{history.length}</span>
+              최근 요청 <span>{historyPaging?.count ?? history.length}</span>
             </div>
             <div className="history-list">
-              {historyError ? (
-                <p className="fine-print">{historyError}</p>
+              {historyLoading ? (
+                <Spinner>요청 목록 조회 중</Spinner>
+              ) : historyError ? (
+                <div>
+                  <p className="fine-print">{historyError}</p>
+                  <button onClick={() => setHistoryVersion((v) => v + 1)}>
+                    목록 다시 조회
+                  </button>
+                </div>
               ) : history.length ? (
                 history.map((r) => (
                   <button
@@ -107,7 +138,11 @@ function Shell() {
                     key={r.id}
                   >
                     <span>{r.instruction}</span>
-                    <small>{stateLabels[r.state]}</small>
+                    <small>
+                      {requestMode === "real"
+                        ? requestStateLabel(r.state)
+                        : stateLabels[r.state]}
+                    </small>
                   </button>
                 ))
               ) : (
@@ -118,6 +153,25 @@ function Shell() {
                 </p>
               )}
             </div>
+            {historyPaging && historyPaging.total_pages > 1 && (
+              <div className="history-pages">
+                <button
+                  disabled={historyLoading || !historyPaging.previous_page}
+                  onClick={() => setHistoryPage(historyPaging.previous_page)}
+                >
+                  이전 요청
+                </button>
+                <span>
+                  {historyPaging.page} / {historyPaging.total_pages}
+                </span>
+                <button
+                  disabled={historyLoading || !historyPaging.next_page}
+                  onClick={() => setHistoryPage(historyPaging.next_page)}
+                >
+                  다음 요청
+                </button>
+              </div>
+            )}
           </>
         )}
         <div className="sidebar-footer">
@@ -175,7 +229,7 @@ function Shell() {
                 : "통계 연결 준비 중"
               : requestMode === "mock"
                 ? "가상 요청"
-                : "업무 API 연결 준비 중"}
+                : "의뢰 접수 연결"}
           </div>
         </header>
         {(isAdmin || authMode === "mock" || requestMode === "mock") && (
@@ -195,11 +249,24 @@ function Shell() {
             path="/"
             element={
               isEmployee ? (
-                <Workspace
-                  selectedId={selected}
-                  onSelect={select}
-                  onHistoryChange={() => setHistoryVersion((v) => v + 1)}
-                />
+                requestMode === "real" ? (
+                  <IntakeWorkspace
+                    draft={intakeDraft}
+                    setDraft={setIntakeDraft}
+                    selectedId={selected}
+                    onSelect={select}
+                    onHistoryChange={() => {
+                      setHistoryPage(1);
+                      setHistoryVersion((v) => v + 1);
+                    }}
+                  />
+                ) : (
+                  <Workspace
+                    selectedId={selected}
+                    onSelect={select}
+                    onHistoryChange={() => setHistoryVersion((v) => v + 1)}
+                  />
+                )
               ) : (
                 <Navigate to="/admin" replace />
               )

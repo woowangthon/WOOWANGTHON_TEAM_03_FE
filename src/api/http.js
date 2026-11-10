@@ -17,7 +17,10 @@ export function createHttpClient({
   let csrfPending = null;
   let sessionGeneration = 0;
 
-  async function request(path, { method = "GET", body, signal } = {}) {
+  async function request(
+    path,
+    { method = "GET", body, signal, responseType = "json" } = {},
+  ) {
     const mutation = !["GET", "HEAD", "OPTIONS"].includes(method);
     const generation = sessionGeneration;
     function checkSession() {
@@ -30,8 +33,12 @@ export function createHttpClient({
     }
     if (mutation && !csrfToken) await prepareCsrf();
     checkSession();
-    const headers = { Accept: "application/json" };
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const multipart = body instanceof FormData;
+    const headers = {
+      Accept: responseType === "pdf" ? "application/pdf" : "application/json",
+    };
+    if (body !== undefined && !multipart)
+      headers["Content-Type"] = "application/json";
     if (mutation) headers["X-CSRFToken"] = csrfToken;
     let response;
     try {
@@ -40,7 +47,9 @@ export function createHttpClient({
         credentials: "include",
         headers,
         signal,
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        ...(body === undefined
+          ? {}
+          : { body: multipart ? body : JSON.stringify(body) }),
       });
     } catch (error) {
       if (error.name === "AbortError") throw error;
@@ -54,6 +63,24 @@ export function createHttpClient({
     // A late success must not clear or replace a newer session's CSRF token.
     checkSession();
     if (response.ok && response.status === 204) return null;
+    if (response.ok && responseType === "pdf") {
+      if (
+        response.headers
+          .get("Content-Type")
+          ?.split(";")[0]
+          .trim()
+          .toLowerCase() !== "application/pdf"
+      ) {
+        throw new ApiError(
+          "INVALID_RESPONSE",
+          "PDF 응답을 확인하지 못했습니다.",
+          response.status,
+        );
+      }
+      const pdf = await response.blob();
+      checkSession();
+      return pdf;
+    }
     let data;
     try {
       data = JSON.parse(await response.text());
@@ -133,13 +160,20 @@ export function describeApiError(error) {
     password: "비밀번호",
     current_password: "현재 비밀번호",
     new_password: "새 비밀번호",
+    instruction: "요청문",
+    pdf: "PDF",
+    client_request_key: "접수 번호",
     non_field_errors: "입력 내용",
   };
   const details = Object.entries(error.fields || {}).flatMap(
     ([field, errors]) =>
       (Array.isArray(errors) ? errors : [errors])
         .filter((value) => typeof value === "string")
-        .map((value) => `${labels[field] || field}: ${value}`),
+        .map((value) =>
+          Array.isArray(error.fields)
+            ? value
+            : `${labels[field] || field}: ${value}`,
+        ),
   );
   return [error.message || "요청을 처리하지 못했습니다.", ...details].join(
     "\n",

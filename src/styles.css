@@ -1265,3 +1265,63 @@ td {
 .notice {
   white-space: pre-line;
 }
+.intake-edit,
+.document-card {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.intake-edit textarea {
+  margin: 10px 0;
+  padding: 12px;
+  line-height: 1.7;
+}
+.intake-edit .button-row {
+  justify-content: space-between;
+  align-items: center;
+}
+.intake-detail .request-bubble {
+  max-width: 100%;
+  margin: 16px 0;
+}
+.request-id,
+.file-name {
+  overflow-wrap: anywhere;
+}
+.pdf-preview {
+  width: 100%;
+  height: 480px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.pdf-download {
+  display: inline-block;
+  margin-left: 12px;
+}
+.history-pages {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.history-pages button {
+  padding: 8px 3px;
+}
+.intake-workspace .composer-tools {
+  flex-wrap: wrap;
+}
+.intake-workspace .composer-tools .primary {
+  margin-left: auto;
+}
+@media (max-width: 720px) {
+  .pdf-preview {
+    height: 350px;
+  }
+  .intake-workspace .composer-tools .primary {
+    font-size: 12px;
+    padding: 10px;
+  }
+}

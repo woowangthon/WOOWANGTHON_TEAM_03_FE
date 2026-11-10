@@ -99,6 +99,17 @@ export async function installAuthFixture(page, { signedIn = null } = {}) {
     if (!state.current)
       return fail(path === "/auth/me/" ? 401 : 403, "AUTH_REQUIRED");
     if (operation === "GET /auth/me/") return reply(200, session());
+    if (operation === "GET /requests/" && state.current.role === "user") {
+      return reply(200, {
+        count: 0,
+        page: 1,
+        page_size: 20,
+        total_pages: 1,
+        next_page: null,
+        previous_page: null,
+        results: [],
+      });
+    }
     if (operation === "PATCH /auth/name/") {
       expect(Object.keys(body)).toEqual(["full_name"]);
       if (!body.full_name.trim()) return fail(400, "INVALID_INPUT");
