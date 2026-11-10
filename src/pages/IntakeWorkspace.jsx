@@ -4,6 +4,7 @@ import { requestApi } from "../api/services.js";
 import { describeApiError } from "../api/http.js";
 import { requestStateLabel, validateIntake } from "../api/requests.js";
 import { Notice, Spinner } from "../components/Common.jsx";
+import ApprovalReview from "../components/ApprovalReview.jsx";
 import { useRequestStatus } from "../hooks/useRequestStatus.js";
 import { processingRecovery } from "../api/processing.js";
 
@@ -94,6 +95,52 @@ function RequestDetail({ id, onHistoryChange }) {
         setBusy(false);
         setStarting(false);
       }
+    }
+  }
+
+  function approvalDenied(err) {
+    status.pause();
+    status.clear();
+    setMessage("");
+    setError(describeApiError(err));
+  }
+
+  async function submitApproval(decision) {
+    if (
+      mutation.current ||
+      busy ||
+      loading ||
+      data?.state !== "awaiting_approval"
+    )
+      return;
+    mutation.current = true;
+    status.pause();
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await auth.run(() =>
+        requestApi.decide(auth.user, id, decision, {
+          signal: AbortSignal.timeout(15000),
+        }),
+      );
+      if (!alive.current) return;
+      status.accept({ ...data, state: result.state });
+      setMessage(
+        decision === "approved"
+          ? "외부 전송 승인을 저장했습니다."
+          : "외부 전송 거절을 저장했습니다.",
+      );
+      onHistoryChange();
+      status.refresh();
+    } catch (err) {
+      if (!alive.current) return;
+      approvalDenied(err);
+      if (processingRecovery(err) === "refresh")
+        setMessage("상태를 다시 조회해 저장 결과를 확인해 주세요.");
+    } finally {
+      mutation.current = false;
+      if (alive.current) setBusy(false);
     }
   }
 
@@ -352,11 +399,13 @@ function RequestDetail({ id, onHistoryChange }) {
               )}
             </div>
           )}
-          {data.state === "awaiting_approval" && (
-            <Notice kind="warning">
-              전송 확인 대기 상태입니다. 실제 마스킹 확인·승인 화면은 다음 연결
-              단계입니다.
-            </Notice>
+          {data.state === "awaiting_approval" && !loading && (
+            <ApprovalReview
+              id={id}
+              disabled={busy}
+              onDecision={submitApproval}
+              onDenied={approvalDenied}
+            />
           )}
           {data.state === "completed" && data.answer_text && (
             <div className="answer">
@@ -486,8 +535,8 @@ export default function IntakeWorkspace({
               PDF를 먼저 접수한 뒤 요청문을 추가할 수도 있습니다.
             </p>
             <Notice>
-              접수 후 내용을 확인하고 검사를 시작할 수 있습니다. 외부 전송
-              확인·승인 화면은 다음 연결 단계에서 제공됩니다.
+              접수 후 내용을 확인하고 검사를 시작할 수 있습니다. 외부 전송이
+              필요한 요청은 검사 결과를 확인한 뒤 승인해 주세요.
             </Notice>
           </section>
         )}

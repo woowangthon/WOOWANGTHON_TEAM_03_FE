@@ -8,15 +8,7 @@ export const adminMetrics = [
   ["policy_blocked_requests", "정책 차단"],
   ["external_sent_confirmed_requests", "외부 전송 확인"],
 ];
-export const detectionLabels = {
-  company: "회사명",
-  project: "사업명",
-  doc_no: "문서·식별번호",
-  price: "금액",
-  person: "이름",
-  contact: "연락처",
-  biz_no: "사업자번호",
-};
+export { detectionLabels } from "../domain/requests.js";
 export const routeLabels = { local: "사내", external: "외부", blocked: "차단" };
 export const inspectionLabels = {
   pending: "검사 대기",

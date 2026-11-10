@@ -826,6 +826,59 @@ small {
   margin-left: 5px;
   color: #b87960;
 }
+.approval-review {
+  border-top: 1px solid #e4e7dc;
+  padding-top: 20px;
+}
+.approval-review-heading,
+.approval-detections button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+}
+.approval-review-heading {
+  justify-content: space-between;
+}
+.approval-review h2,
+.approval-review h3 {
+  margin: 0;
+}
+.approval-deadline {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+.approval-review .highlight-preview,
+.approval-detections {
+  max-height: 24rem;
+  overflow: auto;
+}
+.approval-review mark:focus {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.approval-detections {
+  padding: 0;
+  list-style: none;
+}
+.approval-detections li + li {
+  border-top: 1px solid #e4e7dc;
+}
+.approval-detections button {
+  width: 100%;
+  padding: 10px 4px;
+  text-align: left;
+}
+.approval-detection-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.approval-actions {
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
 .route-note {
   font-size: 11px;
   color: #7b8c6b;

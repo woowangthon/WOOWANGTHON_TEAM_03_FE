@@ -22,7 +22,17 @@ export function validateInstruction(text) {
   return null;
 }
 
-/** Mock spans use JS UTF-16 offsets. Real BE coordinate conversion is not agreed yet. */
+export const detectionLabels = {
+  company: "회사명",
+  project: "사업명",
+  doc_no: "문서·식별번호",
+  price: "금액",
+  person: "이름",
+  contact: "연락처",
+  biz_no: "사업자번호",
+};
+
+/** Render using UTF-16 offsets after the API layer converts server coordinates. */
 export function splitHighlights(text, spans) {
   let cursor = 0;
   const parts = [];

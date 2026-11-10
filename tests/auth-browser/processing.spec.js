@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { installAuthFixture, employee, admin } from "./auth-fixture.js";
+import { inputText, previewFixture } from "../fixtures/processing.js";
 
 const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 async function setup(page, initial = "preparing") {
@@ -12,6 +13,15 @@ async function setup(page, initial = "preparing") {
     loseStart: false,
     failStart: false,
     readError: null,
+    previewReads: 0,
+    previewError: null,
+    holdPreview: null,
+    decisions: [],
+    holdDecision: null,
+    decisionError: null,
+    loseDecision: false,
+    clean: false,
+    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     row: {
       request_id: id,
       instruction: "가상 문서를 요약해 주세요.",
@@ -42,6 +52,38 @@ async function setup(page, initial = "preparing") {
         previous_page: null,
         results: [{ ...state.row, instruction_preview: state.row.instruction }],
       });
+    if (path.endsWith("/approval-preview/")) {
+      expect(request.method()).toBe("GET");
+      state.previewReads++;
+      if (state.holdPreview) await state.holdPreview;
+      if (state.previewError) return fail(...state.previewError);
+      return json(
+        previewFixture({ clean: state.clean, expiresAt: state.expiresAt }),
+      );
+    }
+    if (path.endsWith("/approval/")) {
+      expect(request.method()).toBe("POST");
+      expect(request.headers()["x-csrftoken"]).toBe(auth.csrf);
+      const body = request.postDataJSON();
+      expect(Object.keys(body)).toEqual(["decision"]);
+      state.decisions.push(body.decision);
+      if (state.holdDecision) await state.holdDecision;
+      if (state.decisionError) return fail(...state.decisionError);
+      state.row.state = body.decision === "approved" ? "queued" : "rejected";
+      if (state.loseDecision) return route.abort("failed");
+      return json({
+        request: {
+          request_id: id,
+          state: state.row.state,
+          approval: {
+            status: body.decision,
+            expires_at: state.expiresAt,
+            decided_at: new Date().toISOString(),
+          },
+          replayed: false,
+        },
+      });
+    }
     if (path.endsWith("/start/")) {
       state.starts++;
       expect(request.headers()["x-csrftoken"]).toBe(auth.csrf);
@@ -81,6 +123,152 @@ async function setup(page, initial = "preparing") {
   return { state, auth };
 }
 const statusTag = (page) => page.locator(".intake-detail .state-tag");
+const approvalButton = (page) =>
+  page.getByRole("button", { name: "외부 전송 승인", exact: true });
+const review = (page) => page.getByRole("region", { name: "외부 전송 확인" });
+
+test("real mode renders exact inspection text and navigable detections, then submits one approval", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "awaiting_approval");
+  await expect(review(page).locator("mark")).toHaveText("가상회사");
+  expect(await review(page).locator(".highlight-preview").textContent()).toBe(
+    inputText,
+  );
+  await expect(review(page).locator("time")).toHaveAttribute(
+    "datetime",
+    state.expiresAt,
+  );
+  await expect(review(page).getByText(/남은 시간/)).toBeVisible();
+  await review(page)
+    .getByRole("button", { name: /회사명 PDF 본문 가상회사/ })
+    .click();
+  await expect(review(page).locator("mark")).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  let release;
+  state.holdDecision = new Promise((resolve) => (release = resolve));
+  await approvalButton(page).dblclick();
+  await expect(page.getByText("선택 저장 중", { exact: true })).toBeVisible();
+  await expect(review(page)).toHaveCount(0);
+  release();
+  await expect(statusTag(page)).toHaveText("처리 대기");
+  await expect(
+    page.getByText("외부 전송 승인을 저장했습니다.", { exact: true }),
+  ).toBeVisible();
+  expect(state.decisions).toEqual(["approved"]);
+});
+
+test("zero detections still require a choice and rejection clears the preview", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "awaiting_approval");
+  state.clean = true;
+  await page.reload();
+  await expect(review(page).getByText("탐지 구간 0개")).toBeVisible();
+  await expect(approvalButton(page)).toBeEnabled();
+  expect(state.decisions).toEqual([]);
+  await review(page)
+    .getByRole("button", { name: "외부 전송 거절", exact: true })
+    .click();
+  await expect(statusTag(page)).toHaveText("전송 거절");
+  await expect(review(page)).toHaveCount(0);
+  expect(state.decisions).toEqual(["rejected"]);
+});
+
+test("local deadline removes sensitive details before the server state catches up", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "awaiting_approval");
+  state.expiresAt = new Date(
+    (await page.evaluate(() => Date.now())) + 12000,
+  ).toISOString();
+  await page.reload();
+  await expect(approvalButton(page)).toBeVisible();
+  await page.clock.fastForward(12100);
+  await expect(
+    page.getByText("승인 시간이 만료되었습니다.", { exact: true }),
+  ).toBeVisible();
+  await expect(review(page)).toHaveCount(0);
+  await expect(approvalButton(page)).toHaveCount(0);
+  expect(state.decisions).toEqual([]);
+});
+
+for (const scenario of [
+  { name: "lost decision response", code: null, finalState: "queued" },
+  {
+    name: "another decision already saved",
+    code: "APPROVAL_ALREADY_DECIDED",
+    finalState: "rejected",
+  },
+  {
+    name: "server deadline expired",
+    code: "APPROVAL_EXPIRED",
+    finalState: "expired",
+  },
+]) {
+  test(`${scenario.name} clears details and recovers by GET without resending`, async ({
+    page,
+  }) => {
+    const { state } = await setup(page, "awaiting_approval");
+    if (scenario.code) state.decisionError = [scenario.code, 409];
+    else state.loseDecision = true;
+    await approvalButton(page).click();
+    await expect(
+      page.getByText("상태를 다시 조회해 저장 결과를 확인해 주세요.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(review(page)).toHaveCount(0);
+    await page.clock.fastForward(5000);
+    expect(state.decisions).toEqual(["approved"]);
+    state.row.state = scenario.finalState;
+    await page
+      .getByRole("button", { name: "상태 다시 조회", exact: true })
+      .click();
+    await expect(statusTag(page)).toHaveText(
+      { queued: "처리 대기", rejected: "전송 거절", expired: "승인 만료" }[
+        scenario.finalState
+      ],
+    );
+    await expect(review(page)).toHaveCount(0);
+    expect(state.decisions).toEqual(["approved"]);
+  });
+}
+
+test("a late preview cannot reappear after polling sees a terminal state", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "analyzing");
+  let release;
+  state.holdPreview = new Promise((resolve) => (release = resolve));
+  state.row.state = "awaiting_approval";
+  await page.clock.fastForward(2100);
+  await expect.poll(() => state.previewReads).toBe(1);
+  state.row.state = "rejected";
+  await page.clock.fastForward(2100);
+  await expect(statusTag(page)).toHaveText("전송 거절");
+  release();
+  await expect(review(page)).toHaveCount(0);
+  await expect(page.locator("mark")).toHaveCount(0);
+});
+
+test("preview access denial clears the request detail and prevents decisions", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "analyzing");
+  state.previewError = ["REQUEST_NOT_FOUND", 404];
+  state.row.state = "awaiting_approval";
+  await page.clock.fastForward(2100);
+  await expect(page.getByRole("alert")).toContainText("REQUEST_NOT_FOUND");
+  await expect(page.locator(".request-bubble")).toHaveCount(0);
+  await expect(review(page)).toHaveCount(0);
+  expect(state.decisions).toEqual([]);
+});
 
 test("saved instruction gates start; one start and sequential polling stop at completion", async ({
   page,

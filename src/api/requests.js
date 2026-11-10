@@ -112,7 +112,7 @@ export function createRequestApi(client = createHttpClient()) {
         id,
       );
     },
-    async decide(user, id, decision) {
+    async decide(user, id, decision, { signal } = {}) {
       if (!["approved", "rejected"].includes(decision))
         throw new ApiError(
           "INVALID_INPUT",
@@ -124,6 +124,7 @@ export function createRequestApi(client = createHttpClient()) {
           await client.request(idPath(id) + "approval/", {
             method: "POST",
             body: { decision },
+            signal,
           }),
           id,
           decision,
