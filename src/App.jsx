@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   NavLink,
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
@@ -21,6 +22,9 @@ import Admin from "./pages/Admin.jsx";
 function Shell() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentLocation = useRef(location);
+  currentLocation.current = location;
   const [params] = useSearchParams();
   const [history, setHistory] = useState([]);
   const [historyVersion, setHistoryVersion] = useState(0);
@@ -77,6 +81,18 @@ function Shell() {
   function select(id) {
     navigate(id ? "/?request=" + encodeURIComponent(id) : "/");
     setMenuOpen(false);
+  }
+  function refreshHistory() {
+    setHistoryPage(1);
+    setHistoryVersion((v) => v + 1);
+  }
+  function historyHidden(id) {
+    setHistory((rows) => rows.filter((row) => row.id !== id));
+    refreshHistory();
+    const { pathname, search } = currentLocation.current;
+    if (pathname === "/" && new URLSearchParams(search).get("request") === id) {
+      navigate("/", { replace: true, state: { historyHidden: true } });
+    }
   }
   async function logout() {
     if (loggingOut) return;
@@ -255,10 +271,9 @@ function Shell() {
                     setDraft={setIntakeDraft}
                     selectedId={selected}
                     onSelect={select}
-                    onHistoryChange={() => {
-                      setHistoryPage(1);
-                      setHistoryVersion((v) => v + 1);
-                    }}
+                    onHistoryChange={refreshHistory}
+                    onHistoryHidden={historyHidden}
+                    historyHidden={location.state?.historyHidden === true}
                   />
                 ) : (
                   <Workspace

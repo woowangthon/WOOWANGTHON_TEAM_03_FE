@@ -131,11 +131,12 @@ export function createRequestApi(client = createHttpClient()) {
         ),
       );
     },
-    async hide(user, id) {
+    async hide(user, id, { signal } = {}) {
       return mutate(user, id, async () => {
         const result = await client.request(idPath(id) + "hide/", {
           method: "POST",
           body: {},
+          signal,
         });
         if (result !== null)
           throw new ApiError(

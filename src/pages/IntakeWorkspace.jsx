@@ -5,6 +5,8 @@ import { describeApiError } from "../api/http.js";
 import { requestStateLabel, validateIntake } from "../api/requests.js";
 import { Notice, Spinner } from "../components/Common.jsx";
 import ApprovalReview from "../components/ApprovalReview.jsx";
+import RequestResult from "../components/RequestResult.jsx";
+import { terminalStates } from "../domain/requests.js";
 import { useRequestStatus } from "../hooks/useRequestStatus.js";
 import { processingRecovery } from "../api/processing.js";
 
@@ -16,7 +18,7 @@ const extractionLabels = {
   failed: "추출 실패",
 };
 
-function RequestDetail({ id, onHistoryChange }) {
+function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
   const auth = useAuth();
   const status = useRequestStatus(auth, id, onHistoryChange);
   const { data, loading } = status;
@@ -28,6 +30,8 @@ function RequestDetail({ id, onHistoryChange }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [starting, setStarting] = useState(false);
+  const [confirmHide, setConfirmHide] = useState(false);
+  const [hiding, setHiding] = useState(false);
   const mutation = useRef(false);
   const [pdf, setPdf] = useState(null);
   const alive = useRef(true);
@@ -46,10 +50,13 @@ function RequestDetail({ id, onHistoryChange }) {
       setInstruction(data.instruction);
       instructionDirty.current = false;
     }
-    if (!data && fileUrl.current) {
-      URL.revokeObjectURL(fileUrl.current);
-      fileUrl.current = null;
-      setPdf(null);
+    if (!data) {
+      setConfirmHide(false);
+      if (fileUrl.current) {
+        URL.revokeObjectURL(fileUrl.current);
+        fileUrl.current = null;
+        setPdf(null);
+      }
     }
   }, [data]);
 
@@ -235,6 +242,42 @@ function RequestDetail({ id, onHistoryChange }) {
       if (alive.current) setBusy(false);
     }
   }
+  async function hideRequest() {
+    if (!confirmHide || !data || loading || busy || mutation.current) return;
+    mutation.current = true;
+    status.pause();
+    setBusy(true);
+    setHiding(true);
+    setError("");
+    setMessage("");
+    try {
+      await auth.run(() =>
+        requestApi.hide(auth.user, id, { signal: AbortSignal.timeout(15000) }),
+      );
+      // Update history even if the user moved to another screen during the POST.
+      onHistoryHidden(id);
+    } catch (err) {
+      const recovery = processingRecovery(err);
+      if (recovery === "refresh" || recovery === "unavailable")
+        onHistoryChange();
+      if (!alive.current) return;
+      setError(describeApiError(err));
+      if (recovery === "refresh" || recovery === "unavailable") {
+        status.clear();
+        if (recovery === "refresh")
+          setMessage("목록과 현재 상태를 확인한 뒤 다시 시도해 주세요.");
+      } else if (recovery !== "session") {
+        status.refresh();
+      }
+    } finally {
+      mutation.current = false;
+      if (alive.current) {
+        setConfirmHide(false);
+        setHiding(false);
+        setBusy(false);
+      }
+    }
+  }
   return (
     <section className="response-card intake-detail">
       <div className="response-heading">
@@ -282,14 +325,6 @@ function RequestDetail({ id, onHistoryChange }) {
                   ? "민감정보를 검사하고 있습니다. 문서 길이에 따라 시간이 걸릴 수 있습니다."
                   : "답변을 처리하고 있습니다."}{" "}
               상태를 자동으로 확인합니다.
-            </Notice>
-          )}
-          {["failed", "blocked", "rejected", "expired"].includes(
-            data.state,
-          ) && (
-            <Notice kind="warning">
-              {requestStateLabel(data.state)} 상태로 종료되었습니다. 다시
-              진행하려면 새 요청을 작성해 주세요.
             </Notice>
           )}
           {data.document && (
@@ -407,12 +442,59 @@ function RequestDetail({ id, onHistoryChange }) {
               onDenied={approvalDenied}
             />
           )}
-          {data.state === "completed" && data.answer_text && (
-            <div className="answer">
-              <h2>서버에 저장된 답변</h2>
-              <p>{data.answer_text}</p>
-            </div>
+          {terminalStates.has(data.state) && (
+            <RequestResult
+              key={data.state}
+              state={data.state}
+              answer={data.answer_text}
+              disabled={busy || loading}
+            />
           )}
+          <div className="intake-edit">
+            {confirmHide ? (
+              <>
+                <p>
+                  목록에서 숨기면 이 의뢰의 상세 화면도 다시 열 수 없습니다.
+                  서버 원본과 관리자 감사 기록은 보관됩니다.
+                </p>
+                {["queued", "analyzing", "processing"].includes(data.state) && (
+                  <p className="fine-print">이미 시작된 처리는 계속됩니다.</p>
+                )}
+                {data.state === "awaiting_approval" && (
+                  <p className="fine-print">
+                    숨기면 이 의뢰의 외부 전송을 승인하거나 거절할 수 없습니다.
+                  </p>
+                )}
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => setConfirmHide(false)}
+                  >
+                    돌아가기
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy || loading}
+                    onClick={hideRequest}
+                  >
+                    {hiding ? "숨기는 중…" : "숨기기 확인"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy || loading}
+                onClick={() => setConfirmHide(true)}
+              >
+                목록에서 숨기기
+              </button>
+            )}
+          </div>
         </>
       )}
     </section>
@@ -423,6 +505,8 @@ export default function IntakeWorkspace({
   selectedId,
   onSelect,
   onHistoryChange,
+  onHistoryHidden,
+  historyHidden,
   draft,
   setDraft,
 }) {
@@ -517,9 +601,11 @@ export default function IntakeWorkspace({
             key={selectedId}
             id={selectedId}
             onHistoryChange={onHistoryChange}
+            onHistoryHidden={onHistoryHidden}
           />
         ) : (
           <section className="welcome">
+            {historyHidden && <Notice>내 요청 목록에서 숨겼습니다.</Notice>}
             <span className="welcome-mark" aria-hidden="true">
               ✳
             </span>

@@ -13,6 +13,12 @@ async function setup(page, initial = "preparing") {
     loseStart: false,
     failStart: false,
     readError: null,
+    listReads: 0,
+    hides: [],
+    hidden: false,
+    holdHide: null,
+    loseHide: false,
+    hideError: null,
     previewReads: 0,
     previewError: null,
     holdPreview: null,
@@ -28,7 +34,7 @@ async function setup(page, initial = "preparing") {
       state: initial,
       processing_available: initial === "preparing",
       document: null,
-      answer_text: null,
+      answer_text: initial === "completed" ? "검증용 최종 답변\n둘째 줄" : null,
     },
   };
   await page.route("**/api/v1/requests/**", async (route) => {
@@ -42,16 +48,31 @@ async function setup(page, initial = "preparing") {
       });
     const fail = (code, status = 409) =>
       json({ error: { code, message: code } }, status);
-    if (path === "/api/v1/requests/")
+    if (path === "/api/v1/requests/") {
+      state.listReads++;
       return json({
-        count: 1,
+        count: state.hidden ? 0 : 1,
         page: 1,
         page_size: 20,
         total_pages: 1,
         next_page: null,
         previous_page: null,
-        results: [{ ...state.row, instruction_preview: state.row.instruction }],
+        results: state.hidden
+          ? []
+          : [{ ...state.row, instruction_preview: state.row.instruction }],
       });
+    }
+    if (path === `/api/v1/requests/${id}/hide/`) {
+      expect(request.method()).toBe("POST");
+      expect(request.headers()["x-csrftoken"]).toBe(auth.csrf);
+      state.hides.push(request.postDataJSON());
+      if (state.holdHide) await state.holdHide;
+      if (state.hideError) return fail(...state.hideError);
+      state.hidden = true;
+      if (state.loseHide) return route.abort("failed");
+      return route.fulfill({ status: 204 });
+    }
+    if (state.hidden) return fail("REQUEST_NOT_FOUND", 404);
     if (path.endsWith("/approval-preview/")) {
       expect(request.method()).toBe("GET");
       state.previewReads++;
@@ -123,6 +144,186 @@ async function setup(page, initial = "preparing") {
   return { state, auth };
 }
 const statusTag = (page) => page.locator(".intake-detail .state-tag");
+const hideButton = (page) =>
+  page.getByRole("button", { name: "목록에서 숨기기", exact: true });
+const confirmHideButton = (page) =>
+  page.getByRole("button", { name: "숨기기 확인", exact: true });
+
+test("completed result copies only the final answer and reports clipboard failure", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        async writeText(text) {
+          if (window.clipboardDenied) throw new Error("denied");
+          window.copiedAnswer = text;
+        },
+      },
+    });
+  });
+  await setup(page, "completed");
+  await expect(statusTag(page)).toHaveText("완료");
+  await page.getByRole("button", { name: "답변 복사", exact: true }).click();
+  expect(await page.evaluate(() => window.copiedAnswer)).toBe(
+    "검증용 최종 답변\n둘째 줄",
+  );
+  await expect(
+    page.getByText("답변을 복사했습니다.", { exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    window.clipboardDenied = true;
+  });
+  await page.getByRole("button", { name: "답변 복사", exact: true }).click();
+  await expect(page.getByText(/답변을 복사하지 못했습니다/)).toBeVisible();
+});
+
+for (const [stateName, label, message] of [
+  ["blocked", "정책 차단", "보안 정책에 따라 요청을 차단했습니다."],
+  ["rejected", "전송 거절", "외부 전송을 거절해 요청이 종료되었습니다."],
+  ["expired", "승인 만료", "승인 시간이 지나 요청이 종료되었습니다."],
+  ["failed", "처리 실패", "요청 처리를 완료하지 못했습니다."],
+]) {
+  test(`${stateName} displays its own outcome and offers a new request`, async ({
+    page,
+  }) => {
+    const { state } = await setup(page, stateName);
+    state.row.answer_text = "종료 상태에서 표시하면 안 되는 가상 답변";
+    await page.reload();
+    await expect(statusTag(page)).toHaveText(label);
+    await expect(
+      page.getByText(message + " 다시 진행하려면 새 요청을 작성해 주세요.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(state.row.answer_text, { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "답변 복사", exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: /새 요청 작성/ }).click();
+    await expect(page.getByLabel("요청 내용", { exact: true })).toBeVisible();
+    expect(state.starts).toBe(0);
+  });
+}
+
+test("hide confirms intent, refreshes history, closes detail and revokes its PDF", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "completed");
+  state.row.document = {
+    original_filename: "synthetic.pdf",
+    size_bytes: 100,
+    page_count: 1,
+    extraction_status: "ready",
+  };
+  await page.reload();
+  await page
+    .getByRole("button", { name: "PDF 원본 보기", exact: true })
+    .click();
+  const frame = page.locator("iframe");
+  await expect(frame).toHaveAttribute("src", /^blob:/);
+  const blobUrl = await frame.getAttribute("src");
+  await hideButton(page).click();
+  await page.getByRole("button", { name: "돌아가기", exact: true }).click();
+  expect(state.hides).toEqual([]);
+  await hideButton(page).click();
+  await expect(
+    page.getByText(/서버 원본과 관리자 감사 기록은 보관됩니다/),
+  ).toBeVisible();
+  let release;
+  state.holdHide = new Promise((resolve) => (release = resolve));
+  const listsBefore = state.listReads;
+  await confirmHideButton(page).dblclick();
+  await expect(
+    page.getByRole("button", { name: "숨기는 중…", exact: true }),
+  ).toBeDisabled();
+  release();
+  await expect(
+    page.getByText("내 요청 목록에서 숨겼습니다.", { exact: true }),
+  ).toBeVisible();
+  await expect(page).not.toHaveURL(/request=/);
+  await expect(page.locator(".intake-detail")).toHaveCount(0);
+  await expect(page.locator(".history-title")).toHaveText("최근 요청 0");
+  await expect.poll(() => state.listReads).toBeGreaterThan(listsBefore);
+  expect(state.hides).toEqual([{}]);
+  expect(
+    await page.evaluate(async (url) => {
+      try {
+        await fetch(url);
+        return true;
+      } catch {
+        return false;
+      }
+    }, blobUrl),
+  ).toBe(false);
+  await page.goto("/?request=" + id);
+  await expect(page.getByRole("alert")).toContainText("REQUEST_NOT_FOUND");
+  await expect(frame).toHaveCount(0);
+  await expect(hideButton(page)).toHaveCount(0);
+});
+
+test("lost hide response refreshes the list and clears details without resending", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "completed");
+  state.loseHide = true;
+  await hideButton(page).click();
+  await confirmHideButton(page).click();
+  await expect(
+    page.getByText("목록과 현재 상태를 확인한 뒤 다시 시도해 주세요.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".history-title")).toHaveText("최근 요청 0");
+  await expect(page.locator(".request-bubble")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "상태 다시 조회", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("REQUEST_NOT_FOUND");
+  expect(state.hides).toEqual([{}]);
+});
+
+test("hide during approval closes the preview and refreshes history after navigation", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "awaiting_approval");
+  await expect(page.locator(".approval-review")).toBeVisible();
+  await hideButton(page).click();
+  await expect(
+    page.getByText(
+      /숨기면 이 의뢰의 외부 전송을 승인하거나 거절할 수 없습니다/,
+    ),
+  ).toBeVisible();
+  let release;
+  state.holdHide = new Promise((resolve) => (release = resolve));
+  await confirmHideButton(page).click();
+  await expect.poll(() => state.hides.length).toBe(1);
+  await page.getByRole("link", { name: "내 계정" }).click();
+  release();
+  await expect(page.locator(".history-title")).toHaveText("최근 요청 0");
+  await expect(page).toHaveURL(/\/account$/);
+  await expect(page.locator(".approval-review")).toHaveCount(0);
+  expect(state.decisions).toEqual([]);
+});
+
+test("hide permission denial clears the detail without claiming success", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "completed");
+  state.hideError = ["FORBIDDEN", 403];
+  await hideButton(page).click();
+  await confirmHideButton(page).click();
+  await expect(page.getByRole("alert")).toContainText("FORBIDDEN");
+  await expect(page.locator(".request-bubble")).toHaveCount(0);
+  await expect(
+    page.getByText("내 요청 목록에서 숨겼습니다.", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "내 계정" })).toBeVisible();
+  expect(state.hidden).toBe(false);
+});
+
 const approvalButton = (page) =>
   page.getByRole("button", { name: "외부 전송 승인", exact: true });
 const review = (page) => page.getByRole("region", { name: "외부 전송 확인" });
