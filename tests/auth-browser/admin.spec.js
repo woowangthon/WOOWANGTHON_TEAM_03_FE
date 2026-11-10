@@ -4,12 +4,13 @@ import {
   auditId,
   auditRow,
   auditDetailFixture,
+  complete,
   statistics,
 } from "../fixtures/admin.js";
 
 async function installAudit(page) {
   const auth = await installAuthFixture(page, { signedIn: admin });
-  const state = { calls: [], failure: null, delay: null };
+  const state = { calls: [], failure: null, delay: null, totals: null };
   await page.route("**/api/v1/admin/**", async (route) => {
     const url = new URL(route.request().url());
     if (!/\/admin\/(statistics|requests)\//.test(url.pathname))
@@ -33,8 +34,15 @@ async function installAudit(page) {
       });
     if (url.pathname.endsWith("statistics/")) {
       expect(url.searchParams.has("page")).toBe(false);
+      const response = statistics(Object.fromEntries(url.searchParams));
+      if (state.totals) {
+        response.summary.metrics.total_requests = complete(
+          state.totals.statistics,
+        );
+        response.summary.metrics.warning_requests = complete(0);
+      }
       return route.fulfill({
-        json: statistics(Object.fromEntries(url.searchParams)),
+        json: response,
       });
     }
     if (url.pathname === `/api/v1/admin/requests/${auditId}/`) {
@@ -44,15 +52,18 @@ async function installAudit(page) {
     const p = Number(url.searchParams.get("page"));
     return route.fulfill({
       json: {
-        count: 21,
+        count: state.totals?.list ?? 21,
         page: p,
         page_size: 20,
-        total_pages: 2,
-        next_page: p === 1 ? 2 : null,
+        total_pages: state.totals ? 1 : 2,
+        next_page: p === 1 && !state.totals ? 2 : null,
         previous_page: p === 2 ? 1 : null,
         results: [
           auditRow({
             original_filename: p === 1 ? "가상-감사.pdf" : "둘째-페이지.pdf",
+            ...(state.totals
+              ? { inspection_status: "complete", detection_count: 0 }
+              : {}),
           }),
         ],
       },
@@ -93,6 +104,9 @@ test("audit displays uncertain metrics, actual zeros, safe detail and supported 
   await page.getByLabel("요청 상태", { exact: true }).selectOption("blocked");
   await page.getByLabel("처리 경로", { exact: true }).selectOption("external");
   await page.getByLabel("탐지 분류").selectOption("company");
+  await page.getByLabel("경고 여부", { exact: true }).selectOption("true");
+  await page.getByLabel("검사 상태", { exact: true }).selectOption("degraded");
+  await page.getByLabel("검사 이상", { exact: true }).selectOption("true");
   await page.getByRole("button", { name: "조건 적용", exact: true }).click();
   await expect(detail).toHaveCount(0);
   await expect
@@ -106,6 +120,9 @@ test("audit displays uncertain metrics, actual zeros, safe detail and supported 
       state: "blocked",
       processing_route: "external",
       detection_label: "company",
+      has_warnings: "true",
+      inspection_status: "degraded",
+      inspection_anomaly: "true",
     });
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(
@@ -116,6 +133,51 @@ test("audit displays uncertain metrics, actual zeros, safe detail and supported 
   expect(
     await page.evaluate(() => [localStorage.length, sessionStorage.length]),
   ).toEqual([0, 0]);
+});
+test("applied inspection filters reset pagination and distinguish no warning from unknown", async ({
+  page,
+}) => {
+  const { state } = await installAudit(page);
+  await page.goto("/admin");
+  const list = page.getByRole("region", { name: "관리자 요청 목록" });
+  await expect(list.getByText("경고 미확정", { exact: true })).toBeVisible();
+  await list.getByRole("button", { name: "다음", exact: true }).click();
+  await expect(list.getByText("2 / 2페이지")).toBeVisible();
+
+  state.totals = { list: 1, statistics: 1 };
+  await page.getByLabel("경고 여부", { exact: true }).selectOption("false");
+  await page.getByLabel("검사 상태", { exact: true }).selectOption("complete");
+  await page.getByLabel("검사 이상", { exact: true }).selectOption("false");
+  await page.getByRole("button", { name: "조건 적용", exact: true }).click();
+  await expect(list.getByText("1 / 1페이지")).toBeVisible();
+  await expect(list.getByText("경고 없음", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("metric-warning_requests")).toContainText(
+    "0건",
+  );
+  await expect(page.getByText(/요청 수가 다릅니다/)).toHaveCount(0);
+  const [listCall, statsCall] = [
+    state.calls.slice(-2).find((call) => call.path.endsWith("/requests/")),
+    state.calls.slice(-2).find((call) => call.path.endsWith("/statistics/")),
+  ];
+  const { page: requestPage, page_size, ...filters } = listCall.query;
+  expect(requestPage).toBe("1");
+  expect(page_size).toBe("20");
+  expect(filters).toEqual(statsCall.query);
+  expect(filters).toMatchObject({
+    has_warnings: "false",
+    inspection_status: "complete",
+    inspection_anomaly: "false",
+  });
+
+  state.totals.statistics = 2;
+  await page.getByRole("button", { name: "새로고침", exact: true }).click();
+  await expect(
+    page.getByText(/목록 1건과 통계 2건의 요청 수가 다릅니다/),
+  ).toBeVisible();
+  state.totals.statistics = 1;
+  await page.getByRole("button", { name: "새로고침", exact: true }).click();
+  await expect(page.getByTestId("metric-total_requests")).toContainText("1건");
+  await expect(page.getByText(/요청 수가 다릅니다/)).toHaveCount(0);
 });
 test("refresh waits for completion, ignores old filters and stops on leaving overview", async ({
   page,

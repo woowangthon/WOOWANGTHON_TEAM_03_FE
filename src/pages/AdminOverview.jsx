@@ -19,6 +19,12 @@ const time = (value) =>
     : "미기록";
 const count = (value) =>
   value == null ? "미확정" : `${value.toLocaleString()}건`;
+const warningText = (record) =>
+  record.warning_codes.length
+    ? record.warning_codes.join(", ")
+    : record.inspection_status === "complete"
+      ? "경고 없음"
+      : "경고 미확정";
 const statusLabels = {
   pending: "대기",
   approved: "승인",
@@ -285,10 +291,8 @@ function AuditDetail({ id, close, onForbidden }) {
             </p>
           </div>
           <p className="fine-print">
-            경고 코드:{" "}
-            {data.warning_codes.length
-              ? data.warning_codes.join(", ")
-              : "기록 없음"}
+            {data.warning_codes.length ? "경고 코드 " : ""}
+            {warningText(data)}
           </p>
           {!data.detection_is_final && (
             <Notice kind="warning">
@@ -424,6 +428,9 @@ export default function AdminOverview() {
     state: "",
     processing_route: "",
     detection_label: "",
+    has_warnings: "",
+    inspection_status: "",
+    inspection_anomaly: "",
     request_id: "",
     user_id: "",
   }));
@@ -441,6 +448,12 @@ export default function AdminOverview() {
   const [forbidden, setForbidden] = useState(false);
   const [selected, setSelected] = useState(null);
   const [lastSuccess, setLastSuccess] = useState(null);
+  const statisticsCount = stats?.summary.metrics.total_requests.value;
+  const countMismatch =
+    !busy &&
+    list &&
+    Number.isInteger(statisticsCount) &&
+    list.count !== statisticsCount;
   function deny() {
     setForbidden(true);
     setStats(null);
@@ -609,6 +622,15 @@ export default function AdminOverview() {
           {field("state", "요청 상태", requestStateLabels)}
           {field("processing_route", "처리 경로", routeLabels)}
           {field("detection_label", "탐지 분류", detectionLabels)}
+          {field("has_warnings", "경고 여부", {
+            true: "있음",
+            false: "없음 · 검사 완료",
+          })}
+          {field("inspection_status", "검사 상태", inspectionLabels)}
+          {field("inspection_anomaly", "검사 이상", {
+            true: "이상 · 축소 검사 또는 실패",
+            false: "정상 · 검사 완료",
+          })}
         </div>
         <details>
           <summary>접수·사용자 번호로 검색</summary>
@@ -633,8 +655,8 @@ export default function AdminOverview() {
         <Notice kind="error">{validation}</Notice>
         <button className="primary">조건 적용</button>
         <p className="fine-print">
-          요청문 본문은 검색하지 않습니다. 경고·검사 이상 전용 필터는 아직
-          제공되지 않습니다.
+          모든 조건을 목록·통계에 함께 적용합니다. 경고 없음과 정상 검사는 검사
+          완료 요청에서 확인합니다.
         </p>
       </form>
       <div className="audit-refresh">
@@ -654,6 +676,12 @@ export default function AdminOverview() {
         </button>
       </div>
       {busy && !stats && !list && <Spinner>이용 현황을 불러오는 중</Spinner>}
+      {countMismatch && (
+        <Notice kind="warning">
+          목록 {count(list.count)}과 통계 {count(statisticsCount)}의 요청 수가
+          다릅니다. 새로고침해 확인해 주세요.
+        </Notice>
+      )}
       <Notice kind="error">
         {errors.stats && `통계 조회 실패: ${errors.stats}`}
       </Notice>
@@ -668,12 +696,16 @@ export default function AdminOverview() {
             ))}
           </div>
           <p className="fine-print">
-            집계 시각: {time(stats.calculated_at)} · 검사 대기{" "}
-            {stats.summary.coverage.inspection_pending_requests ?? "미확인"}건 ·
-            전송 여부 불명{" "}
-            {stats.summary.coverage.external_delivery_unknown_requests ??
-              "미확인"}
-            건<br />
+            집계 시각 {time(stats.calculated_at)}
+            <br />
+            검사 완료{" "}
+            {count(stats.summary.coverage.inspection_complete_requests)} · 대기{" "}
+            {count(stats.summary.coverage.inspection_pending_requests)} · 축소{" "}
+            {count(stats.summary.coverage.inspection_degraded_requests)} · 실패{" "}
+            {count(stats.summary.coverage.inspection_failed_requests)} · 전송
+            여부 불명{" "}
+            {count(stats.summary.coverage.external_delivery_unknown_requests)}
+            <br />
             정책 차단은 거절·만료를 포함하지 않습니다. 외부 경로 판정이나
             승인만으로 전송 완료를 계산하지 않습니다.
           </p>
@@ -753,9 +785,7 @@ export default function AdminOverview() {
                         </small>
                       </td>
                       <td>
-                        {row.warning_codes.length
-                          ? row.warning_codes.join(", ")
-                          : "경고 기록 없음"}
+                        {warningText(row)}
                         <br />
                         {row.error_code || ""}
                       </td>

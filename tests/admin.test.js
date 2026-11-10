@@ -34,15 +34,28 @@ test("queries use shared supported filters, omit blanks and paginate only lists"
     date_to: "2026-11-10",
     state: "",
     processing_route: "external",
+    has_warnings: "false",
+    inspection_status: "complete",
+    inspection_anomaly: false,
     has_warning: true,
     page: 2,
   };
   const query = new URLSearchParams(adminQuery(filters));
   assert.deepEqual(
     [...query.keys()],
-    ["q", "date_from", "date_to", "processing_route"],
+    [
+      "q",
+      "date_from",
+      "date_to",
+      "processing_route",
+      "has_warnings",
+      "inspection_status",
+      "inspection_anomaly",
+    ],
   );
   assert.equal(query.get("q"), "직원");
+  assert.equal(query.get("has_warnings"), "false");
+  assert.equal(query.get("inspection_anomaly"), "false");
   assert.equal(
     new URLSearchParams(adminQuery(filters, { page: 2 })).get("page"),
     "2",

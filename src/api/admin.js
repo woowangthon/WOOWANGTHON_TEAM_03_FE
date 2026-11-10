@@ -25,6 +25,9 @@ const filterKeys = [
   "state",
   "processing_route",
   "detection_label",
+  "has_warnings",
+  "inspection_status",
+  "inspection_anomaly",
 ];
 const pick = (value, keys) =>
   Object.fromEntries(keys.map((key) => [key, value?.[key]]));
