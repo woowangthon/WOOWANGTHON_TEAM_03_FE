@@ -72,14 +72,47 @@ test("network failure never retries a mutation or substitutes mock success", asy
   );
   assert.equal(calls, 1);
 });
-test("HTML proxy errors become readable response errors", async () => {
+test("empty and HTML gateway errors report an unavailable service", async () => {
+  for (const status of [502, 503, 504]) {
+    for (const body of ["", "<h1>bad gateway</h1>"]) {
+      const client = createHttpClient({
+        fetchImpl: async () => new Response(body, { status }),
+      });
+      await assert.rejects(
+        client.request("/auth/me/"),
+        (e) => e.code === "SERVICE_UNAVAILABLE" && e.status === status,
+      );
+    }
+  }
+});
+test("a gateway failure never retries a mutation or claims it was not applied", async () => {
+  let calls = 0;
+  const client = createHttpClient({
+    fetchImpl: async () => {
+      calls++;
+      return new Response("", { status: 502 });
+    },
+  });
+  client.setCsrf("fixture");
+  await assert.rejects(
+    client.request("/auth/name/", {
+      method: "PATCH",
+      body: { full_name: "시험" },
+    }),
+    (e) =>
+      e.code === "SERVICE_UNAVAILABLE" &&
+      e.message.includes("변경이 반영됐을 수 있으니"),
+  );
+  assert.equal(calls, 1);
+});
+test("a successful HTML response remains an invalid API response", async () => {
   const client = createHttpClient({
     fetchImpl: async () =>
-      new Response("<h1>bad gateway</h1>", { status: 502 }),
+      new Response("<h1>frontend instead of API</h1>", { status: 200 }),
   });
   await assert.rejects(
     client.request("/auth/me/"),
-    (e) => e.code === "INVALID_RESPONSE" && e.status === 502,
+    (e) => e.code === "INVALID_RESPONSE" && e.status === 200,
   );
 });
 

@@ -13,6 +13,10 @@ export default function Login() {
     if (busy) return;
     const form = event.currentTarget;
     const data = new FormData(form);
+    if (data.get("password").length > 30) {
+      setError("비밀번호는 30자 이내로 입력해 주세요.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -94,9 +98,15 @@ export default function Login() {
                 name="username"
                 autoComplete="username"
                 required
+                pattern="[A-Z0-9]{8}"
+                title="대문자 영문 또는 숫자로 된 8자리 ID"
+                aria-describedby="login-id-help"
                 placeholder="발급받은 ID"
               />
             </label>
+            <p className="fine-print" id="login-id-help">
+              로그인 ID는 대문자 영문 또는 숫자로 된 8자리입니다.
+            </p>
             <label>
               비밀번호
               <input

@@ -58,6 +58,15 @@ export function createHttpClient({
     try {
       data = JSON.parse(await response.text());
     } catch {
+      if ([502, 503, 504].includes(response.status)) {
+        throw new ApiError(
+          "SERVICE_UNAVAILABLE",
+          mutation
+            ? "서버 연결이 불안정해 처리 결과를 확인하지 못했습니다. 변경이 반영됐을 수 있으니 상태를 확인한 뒤 다시 시도해 주세요."
+            : "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+          response.status,
+        );
+      }
       throw new ApiError(
         "INVALID_RESPONSE",
         "서버 응답을 읽지 못했습니다. 연결 설정을 확인해 주세요.",

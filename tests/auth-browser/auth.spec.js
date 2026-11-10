@@ -7,6 +7,26 @@ import {
   login,
 } from "./auth-fixture.js";
 
+test("login explains invalid ID and overlong password before sending credentials", async ({
+  page,
+}) => {
+  const state = await installAuthFixture(page);
+  await page.goto("/");
+  await login(page, "sophi");
+  expect(
+    await page
+      .getByRole("textbox", { name: "로그인 ID", exact: true })
+      .evaluate((input) => input.validity.patternMismatch),
+  ).toBe(true);
+  await expect(
+    page.getByText("로그인 ID는 대문자 영문 또는 숫자로 된 8자리입니다."),
+  ).toBeVisible();
+  expect(state.calls).not.toContain("POST /auth/login/");
+  await login(page, admin.username, "A".repeat(31));
+  await expect(page.getByRole("alert")).toContainText("비밀번호는 30자 이내");
+  expect(state.calls).not.toContain("POST /auth/login/");
+});
+
 test("real client logs in, restores its session and logs out without exposing employee tools to an admin", async ({
   page,
 }) => {
