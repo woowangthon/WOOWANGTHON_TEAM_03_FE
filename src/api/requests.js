@@ -1,4 +1,5 @@
 import { ApiError, createHttpClient } from "./http.js";
+import { approvalPreview, approvalDecision } from "./processing.js";
 
 export const MAX_PDF_BYTES = 10_000_000;
 export const requestStateLabels = {
@@ -59,9 +60,90 @@ function detail(data) {
   return { ...value, id: value.request_id, replayed: data.replayed === true };
 }
 
-/** Intake only: no AI start, approval, route change or automatic mutation retry. */
+/** User-scoped requests. Mutations never retry or imply external delivery. */
 export function createRequestApi(client = createHttpClient()) {
+  const pending = new Map();
+  async function mutate(user, id, operation) {
+    employeeOnly(user);
+    idPath(id);
+    const key = `${user.id}:${id}`;
+    if (pending.has(key))
+      throw new ApiError(
+        "REQUEST_PENDING",
+        "이 의뢰의 요청을 처리 중입니다.",
+        409,
+      );
+    const token = {};
+    pending.set(key, token);
+    try {
+      return await operation();
+    } finally {
+      if (pending.get(key) === token) pending.delete(key);
+    }
+  }
   return {
+    clear() {
+      pending.clear();
+    },
+    async start(user, id) {
+      return mutate(user, id, async () => {
+        const result = detail(
+          await client.request(idPath(id) + "start/", {
+            method: "POST",
+            body: {},
+          }),
+        );
+        if (
+          result.id !== id ||
+          result.state !== "queued" ||
+          result.processing_available !== false
+        )
+          throw new ApiError(
+            "INVALID_RESPONSE",
+            "시작 결과를 확인하지 못했습니다. 현재 상태를 조회해 주세요.",
+          );
+        return result;
+      });
+    },
+    async preview(user, id, { signal } = {}) {
+      employeeOnly(user);
+      return approvalPreview(
+        await client.request(idPath(id) + "approval-preview/", { signal }),
+        id,
+      );
+    },
+    async decide(user, id, decision) {
+      if (!["approved", "rejected"].includes(decision))
+        throw new ApiError(
+          "INVALID_INPUT",
+          "승인 또는 거절을 선택해 주세요.",
+          400,
+        );
+      return mutate(user, id, async () =>
+        approvalDecision(
+          await client.request(idPath(id) + "approval/", {
+            method: "POST",
+            body: { decision },
+          }),
+          id,
+          decision,
+        ),
+      );
+    },
+    async hide(user, id) {
+      return mutate(user, id, async () => {
+        const result = await client.request(idPath(id) + "hide/", {
+          method: "POST",
+          body: {},
+        });
+        if (result !== null)
+          throw new ApiError(
+            "INVALID_RESPONSE",
+            "숨김 결과를 확인하지 못했습니다. 목록을 다시 조회해 주세요.",
+          );
+        return null;
+      });
+    },
     async create(user, { key, instruction, file }) {
       employeeOnly(user);
       let body = { client_request_key: key, instruction };

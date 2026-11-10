@@ -18,4 +18,5 @@ export const requestApi =
   requestMode === "mock" ? mockRequests : createRequestApi(client);
 export function clearRequestData() {
   mockRequests.clear();
+  if (requestMode === "real") requestApi.clear();
 }
