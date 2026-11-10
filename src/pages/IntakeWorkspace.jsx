@@ -4,6 +4,8 @@ import { requestApi } from "../api/services.js";
 import { describeApiError } from "../api/http.js";
 import { requestStateLabel, validateIntake } from "../api/requests.js";
 import { Notice, Spinner } from "../components/Common.jsx";
+import { useRequestStatus } from "../hooks/useRequestStatus.js";
+import { processingRecovery } from "../api/processing.js";
 
 const extractionLabels = {
   uploading: "업로드 중",
@@ -15,13 +17,17 @@ const extractionLabels = {
 
 function RequestDetail({ id, onHistoryChange }) {
   const auth = useAuth();
-  const [data, setData] = useState(null);
+  const status = useRequestStatus(auth, id, onHistoryChange);
+  const { data, loading } = status;
+  const visibleRecord = useRef(data);
+  visibleRecord.current = data;
+  const setData = (next) => (next ? status.accept(next) : status.clear());
   const [instruction, setInstruction] = useState("");
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [version, setVersion] = useState(0);
+  const [starting, setStarting] = useState(false);
+  const mutation = useRef(false);
   const [pdf, setPdf] = useState(null);
   const alive = useRef(true);
   const fileUrl = useRef(null);
@@ -35,40 +41,72 @@ function RequestDetail({ id, onHistoryChange }) {
     };
   }, []);
   useEffect(() => {
-    const controller = new AbortController();
-    let active = true;
-    setLoading(true);
-    setData(null);
+    if (data && (!instructionDirty.current || data.state !== "preparing")) {
+      setInstruction(data.instruction);
+      instructionDirty.current = false;
+    }
+    if (!data && fileUrl.current) {
+      URL.revokeObjectURL(fileUrl.current);
+      fileUrl.current = null;
+      setPdf(null);
+    }
+  }, [data]);
+
+  async function start() {
+    if (
+      mutation.current ||
+      busy ||
+      loading ||
+      !data?.processing_available ||
+      data.state !== "preparing" ||
+      instruction !== data.instruction
+    )
+      return;
+    mutation.current = true;
+    status.pause();
+    setBusy(true);
+    setStarting(true);
     setError("");
-    auth
-      .run(() => requestApi.get(auth.user, id, { signal: controller.signal }))
-      .then((next) => {
-        if (active) {
-          setData(next);
-          if (!instructionDirty.current) setInstruction(next.instruction);
-        }
-      })
-      .catch((err) => {
-        if (active && err.name !== "AbortError")
-          setError(describeApiError(err));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [id, version]);
+    setMessage("");
+    try {
+      const next = await auth.run(() => requestApi.start(auth.user, id));
+      if (!alive.current) return;
+      status.accept(next);
+      setMessage(
+        "검사를 시작했습니다. 외부 전송이 필요한 경우 별도 승인을 받습니다.",
+      );
+      onHistoryChange();
+      status.refresh();
+    } catch (err) {
+      if (!alive.current) return;
+      setError(describeApiError(err));
+      const recovery = processingRecovery(err);
+      if (recovery === "refresh" || recovery === "unavailable") {
+        // Require an explicit GET before allowing another start after uncertainty.
+        status.clear();
+        setMessage(
+          "시작 요청은 자동으로 다시 보내지 않습니다. 상태 다시 조회로 결과를 확인해 주세요.",
+        );
+      }
+    } finally {
+      mutation.current = false;
+      if (alive.current) {
+        setBusy(false);
+        setStarting(false);
+      }
+    }
+  }
 
   async function save(event) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || mutation.current || loading) return;
     const validation = validateIntake(instruction, null);
     if (validation) {
       setError(validation);
       return;
     }
+    mutation.current = true;
+    status.pause();
     setBusy(true);
     setError("");
     setMessage("");
@@ -109,12 +147,18 @@ function RequestDetail({ id, onHistoryChange }) {
             if (alive.current) setData(null);
           }
         } else if (
-          ["REQUEST_NOT_EDITABLE", "DOCUMENT_NOT_READY"].includes(err.code)
+          [
+            "REQUEST_NOT_EDITABLE",
+            "DOCUMENT_NOT_READY",
+            "FORBIDDEN",
+            "REQUEST_NOT_FOUND",
+          ].includes(err.code)
         ) {
           setData(null);
         }
       }
     } finally {
+      mutation.current = false;
       if (alive.current) setBusy(false);
     }
   }
@@ -124,12 +168,22 @@ function RequestDetail({ id, onHistoryChange }) {
     setError("");
     try {
       const blob = await auth.run(() => requestApi.file(auth.user, id));
-      if (!alive.current) return;
+      if (!alive.current || !visibleRecord.current) return;
       if (fileUrl.current) URL.revokeObjectURL(fileUrl.current);
       fileUrl.current = URL.createObjectURL(blob);
       setPdf(fileUrl.current);
     } catch (err) {
-      if (alive.current) setError(describeApiError(err));
+      if (alive.current) {
+        setError(describeApiError(err));
+        if (
+          ["FORBIDDEN", "REQUEST_NOT_FOUND", "DOCUMENT_NOT_FOUND"].includes(
+            err.code,
+          )
+        ) {
+          status.pause();
+          status.clear();
+        }
+      }
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -145,6 +199,7 @@ function RequestDetail({ id, onHistoryChange }) {
       </div>
       {loading && <Spinner>접수한 의뢰를 불러오는 중</Spinner>}
       <Notice kind="error">{error}</Notice>
+      <Notice kind="error">{status.error}</Notice>
       <Notice>{message}</Notice>
       {!loading && (
         <button
@@ -152,7 +207,8 @@ function RequestDetail({ id, onHistoryChange }) {
           disabled={busy}
           onClick={() => {
             setMessage("");
-            setVersion((v) => v + 1);
+            setError("");
+            status.refresh();
           }}
         >
           상태 다시 조회
@@ -165,10 +221,28 @@ function RequestDetail({ id, onHistoryChange }) {
             <span className="eyebrow">접수한 요청문</span>
             <p>{data.instruction || "요청문을 아직 추가하지 않았습니다."}</p>
           </div>
-          {!data.processing_available && (
+          {data.state === "preparing" && (
             <Notice>
-              의뢰는 서버에 저장됐습니다. 현재 화면에서는 PDF 추출·AI 처리와
-              외부 전송을 실행하지 않습니다.
+              접수한 내용을 확인한 뒤 검사를 시작해 주세요. PDF만 접수했다면
+              요청문을 먼저 저장해 주세요.
+            </Notice>
+          )}
+          {["queued", "analyzing", "processing"].includes(data.state) && (
+            <Notice>
+              {data.state === "queued"
+                ? "처리 순서를 기다리고 있습니다."
+                : data.state === "analyzing"
+                  ? "민감정보를 검사하고 있습니다. 문서 길이에 따라 시간이 걸릴 수 있습니다."
+                  : "답변을 처리하고 있습니다."}{" "}
+              상태를 자동으로 확인합니다.
+            </Notice>
+          )}
+          {["failed", "blocked", "rejected", "expired"].includes(
+            data.state,
+          ) && (
+            <Notice kind="warning">
+              {requestStateLabel(data.state)} 상태로 종료되었습니다. 다시
+              진행하려면 새 요청을 작성해 주세요.
             </Notice>
           )}
           {data.document && (
@@ -223,7 +297,7 @@ function RequestDetail({ id, onHistoryChange }) {
                 id="saved-instruction"
                 rows={4}
                 value={instruction}
-                disabled={busy}
+                disabled={busy || loading}
                 onChange={(e) => {
                   instructionDirty.current = true;
                   setInstruction(e.target.value);
@@ -237,6 +311,7 @@ function RequestDetail({ id, onHistoryChange }) {
                   className="primary"
                   disabled={
                     busy ||
+                    loading ||
                     !instruction.trim() ||
                     [...instruction].length > 4000
                   }
@@ -249,6 +324,33 @@ function RequestDetail({ id, onHistoryChange }) {
                 주세요.
               </p>
             </form>
+          )}
+          {data.state === "preparing" && (
+            <div className="intake-edit">
+              <button
+                type="button"
+                className="primary"
+                onClick={start}
+                disabled={
+                  busy ||
+                  loading ||
+                  !data.processing_available ||
+                  instruction !== data.instruction
+                }
+              >
+                {starting ? "검사 시작 중…" : "검사 시작"}
+              </button>
+              {instruction !== data.instruction && (
+                <p className="fine-print">
+                  수정한 요청문을 저장한 뒤 검사를 시작할 수 있습니다.
+                </p>
+              )}
+              {!data.processing_available && data.instruction && (
+                <p className="fine-print">
+                  아직 검사를 시작할 수 없습니다. 상태를 다시 조회해 주세요.
+                </p>
+              )}
+            </div>
           )}
           {data.state === "awaiting_approval" && (
             <Notice kind="warning">
@@ -384,8 +486,8 @@ export default function IntakeWorkspace({
               PDF를 먼저 접수한 뒤 요청문을 추가할 수도 있습니다.
             </p>
             <Notice>
-              현재 의뢰 접수·조회가 연결되어 있습니다. PDF 추출과 AI 처리 기능은
-              준비 중입니다.
+              접수 후 내용을 확인하고 검사를 시작할 수 있습니다. 외부 전송
+              확인·승인 화면은 다음 연결 단계에서 제공됩니다.
             </Notice>
           </section>
         )}
