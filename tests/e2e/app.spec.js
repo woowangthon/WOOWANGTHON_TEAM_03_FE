@@ -58,6 +58,28 @@ test("admin can filter mock users and see empty result", async ({ page }) => {
     page.getByRole("heading", { name: "검색 결과가 없습니다" }),
   ).toBeVisible();
 });
+
+test("administrator has no employee workspace, history, or direct request route", async ({
+  page,
+}) => {
+  await page.goto("/?request=someone-elses-request");
+  await page.getByRole("button", { name: "관리자로 체험하기" }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { name: "보안 현황" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "AI 작업 공간" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "새 요청", exact: false }),
+  ).toHaveCount(0);
+  await expect(page.locator(".history-list")).toHaveCount(0);
+  await expect(page.locator("textarea")).toHaveCount(0);
+  await page.getByRole("link", { name: "내 계정" }).click();
+  await expect(page.getByRole("heading", { name: "내 계정" })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/admin$/);
+  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await page.getByRole("button", { name: "직원으로 체험하기" }).click();
+  await expect(page.getByRole("link", { name: "AI 작업 공간" })).toBeVisible();
+});
 test("mobile layout stays within viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");

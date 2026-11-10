@@ -57,6 +57,15 @@ export default function Login() {
             : "회사에서 발급받은 계정으로 로그인하세요."}
         </p>
         <Notice kind="error">{error || auth.error}</Notice>
+        {authMode === "real" && auth.error && (
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => auth.restore()}
+          >
+            로그인 상태 다시 확인
+          </button>
+        )}
         {authMode === "mock" ? (
           <>
             <div className="demo-label">

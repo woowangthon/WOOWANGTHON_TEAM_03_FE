@@ -1,23 +1,57 @@
-import { createHttpClient } from "./http.js";
+import { ApiError, createHttpClient } from "./http.js";
 
-/** Contract: internal auth v1.0 + addendum v1.1. No business endpoints are assumed. */
+function validateSession(data) {
+  const user = data?.user;
+  if (
+    !user ||
+    !["id", "username", "full_name"].every(
+      (key) => typeof user[key] === "string" && user[key].trim(),
+    ) ||
+    !["admin", "user"].includes(user.role) ||
+    typeof data.session_expires_at !== "string" ||
+    !Number.isFinite(Date.parse(data.session_expires_at))
+  ) {
+    throw new ApiError(
+      "INVALID_RESPONSE",
+      "로그인 정보를 확인하지 못했습니다. 다시 로그인해 주세요.",
+    );
+  }
+  if (Date.parse(data.session_expires_at) <= Date.now()) {
+    throw new ApiError(
+      "AUTH_REQUIRED",
+      "로그인이 만료됐습니다. 다시 로그인해 주세요.",
+    );
+  }
+  return data;
+}
+
+/** The 11 authentication/account operations in the 2026-11-10 API contract. */
 export function createAuthApi(client = createHttpClient()) {
   return {
     async bootstrap() {
-      const current = await client.request("/auth/me/");
+      const current = validateSession(await client.request("/auth/me/"));
       await client.prepareCsrf();
       return current;
     },
     async login(username, password) {
-      const data = await client.request("/auth/login/", {
-        method: "POST",
-        body: { username, password },
-      });
+      const data = validateSession(
+        await client.request("/auth/login/", {
+          method: "POST",
+          body: { username, password },
+        }),
+      );
+      if (typeof data.csrf_token !== "string" || !data.csrf_token) {
+        client.clear();
+        throw new ApiError(
+          "INVALID_RESPONSE",
+          "로그인 보호 정보를 확인하지 못했습니다. 다시 로그인해 주세요.",
+        );
+      }
       client.setCsrf(data.csrf_token);
       return data;
     },
     async logout() {
-      await client.request("/auth/logout/", { method: "POST" });
+      await client.request("/auth/logout/", { method: "POST", body: {} });
       client.clear();
     },
     async changePassword(current_password, new_password) {
@@ -49,5 +83,6 @@ export function createAuthApi(client = createHttpClient()) {
       client.request(`/admin/users/${encodeURIComponent(id)}/deactivate/`, {
         method: "POST",
       }),
+    clear: () => client.clear(),
   };
 }

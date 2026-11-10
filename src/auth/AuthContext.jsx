@@ -1,28 +1,40 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { authApi, authMode, clearRequestData } from "../api/services.js";
+import { ApiError } from "../api/http.js";
 
 const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(authMode === "real");
   const [error, setError] = useState("");
+  const generation = useRef(0);
   function clearSession() {
+    generation.current++;
+    authApi.clear();
     clearRequestData();
     setSession(null);
   }
   async function restore() {
+    const version = ++generation.current;
     setLoading(true);
     setError("");
     try {
-      setSession(await authApi.bootstrap());
+      const restored = await authApi.bootstrap();
+      if (version !== generation.current) return;
+      setSession(restored);
+      setLoading(false);
     } catch (error) {
+      if (version !== generation.current) return;
+      clearSession();
       if (error.code !== "AUTH_REQUIRED") setError(error.message);
-    } finally {
       setLoading(false);
     }
   }
   useEffect(() => {
     if (authMode === "real") restore();
+    return () => {
+      generation.current++;
+    };
     // Bootstrap runs once; a server error is never replaced by a mock session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -39,10 +51,18 @@ export function AuthProvider({ children }) {
     return () => clearTimeout(timer);
   }, [session?.session_expires_at]);
   async function run(operation) {
+    const version = generation.current;
     try {
-      return await operation();
+      const result = await operation();
+      if (version !== generation.current) {
+        throw new ApiError(
+          "SESSION_CHANGED",
+          "로그인 계정이 변경됐습니다. 다시 확인해 주세요.",
+        );
+      }
+      return result;
     } catch (error) {
-      if (error.code === "AUTH_REQUIRED") {
+      if (version === generation.current && error.code === "AUTH_REQUIRED") {
         clearSession();
         setError("로그인이 만료됐습니다. 다시 로그인해 주세요.");
       }
@@ -56,11 +76,16 @@ export function AuthProvider({ children }) {
     restore,
     run,
     async login(username, password) {
-      setSession(await authApi.login(username, password));
+      const version = ++generation.current;
+      const next = await authApi.login(username, password);
+      if (version !== generation.current) return;
+      clearRequestData();
+      setSession(next);
       setError("");
     },
     demo(role) {
-      clearRequestData();
+      if (authMode !== "mock" || !["user", "admin"].includes(role)) return;
+      clearSession();
       setError("");
       setSession({
         user: {
@@ -78,7 +103,11 @@ export function AuthProvider({ children }) {
     },
     clearSession,
     updateUser(user) {
-      setSession((current) => (current ? { ...current, user } : null));
+      setSession((current) =>
+        current?.user.id === user?.id && current.user.role === user.role
+          ? { ...current, user }
+          : current,
+      );
     },
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

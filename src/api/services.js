@@ -11,7 +11,7 @@ const mockRequests = createMockRequests();
 const pending = async () => {
   throw new ApiError(
     "API_NOT_READY",
-    "요청 처리 API의 주소와 규격이 아직 확정되지 않았습니다. 실제 연결을 준비 중입니다.",
+    "요청 처리 기능을 연결하고 있습니다. 연결이 완료되면 이용할 수 있습니다.",
   );
 };
 export const requestApi =

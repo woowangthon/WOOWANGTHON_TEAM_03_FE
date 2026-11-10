@@ -8,7 +8,9 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "127.0.0.1",
       proxy: env.DEV_API_TARGET
-        ? { "/api": { target: env.DEV_API_TARGET, changeOrigin: true } }
+        ? // Preserve Host and Origin together; Django still validates both and CSRF.
+          // The target must allow the development host (127.0.0.1/localhost).
+          { "/api": { target: env.DEV_API_TARGET, changeOrigin: false } }
         : undefined,
     },
   };

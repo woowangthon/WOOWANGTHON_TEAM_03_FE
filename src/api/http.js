@@ -15,10 +15,21 @@ export function createHttpClient({
 } = {}) {
   let csrfToken = null;
   let csrfPending = null;
+  let sessionGeneration = 0;
 
   async function request(path, { method = "GET", body, signal } = {}) {
     const mutation = !["GET", "HEAD", "OPTIONS"].includes(method);
+    const generation = sessionGeneration;
+    function checkSession() {
+      if (generation !== sessionGeneration) {
+        throw new ApiError(
+          "SESSION_CHANGED",
+          "로그인 상태가 변경됐습니다. 다시 확인해 주세요.",
+        );
+      }
+    }
     if (mutation && !csrfToken) await prepareCsrf();
+    checkSession();
     const headers = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (mutation) headers["X-CSRFToken"] = csrfToken;
@@ -40,6 +51,8 @@ export function createHttpClient({
           : "서버에 연결하지 못했습니다. 잠시 후 다시 조회해 주세요.",
       );
     }
+    // A late success must not clear or replace a newer session's CSRF token.
+    checkSession();
     if (response.ok && response.status === 204) return null;
     let data;
     try {
@@ -51,10 +64,15 @@ export function createHttpClient({
         response.status,
       );
     }
+    checkSession();
     if (!response.ok) {
       // A second tab may rotate the cookie. Only prepare a new token for the
       // user's next attempt; never automatically repeat a mutation.
-      if (data?.error?.code === "CSRF_FAILED") csrfToken = null;
+      if (
+        data?.error?.code === "CSRF_FAILED" &&
+        headers["X-CSRFToken"] === csrfToken
+      )
+        csrfToken = null;
       throw new ApiError(
         data?.error?.code || "REQUEST_FAILED",
         data?.error?.message || "요청을 처리하지 못했습니다.",
@@ -66,19 +84,22 @@ export function createHttpClient({
   }
 
   async function prepareCsrf() {
-    if (!csrfPending)
-      csrfPending = request("/auth/csrf/")
+    if (!csrfPending) {
+      const generation = sessionGeneration;
+      const pending = request("/auth/csrf/")
         .then((data) => {
-          if (!data?.csrf_token)
+          if (typeof data?.csrf_token !== "string" || !data.csrf_token)
             throw new ApiError(
               "INVALID_RESPONSE",
               "인증 준비 정보를 받지 못했습니다.",
             );
-          csrfToken = data.csrf_token;
+          if (generation === sessionGeneration) csrfToken = data.csrf_token;
         })
         .finally(() => {
-          csrfPending = null;
+          if (csrfPending === pending) csrfPending = null;
         });
+      csrfPending = pending;
+    }
     await csrfPending;
   }
 
@@ -89,7 +110,9 @@ export function createHttpClient({
       csrfToken = token || null;
     },
     clear: () => {
+      sessionGeneration++;
       csrfToken = null;
+      csrfPending = null;
     },
   };
 }
