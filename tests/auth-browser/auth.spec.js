@@ -183,7 +183,7 @@ for (const invalid of ["unknown-role", "missing-expiry", "expired"]) {
     await expect(page.getByRole("heading", { name: "보안 현황" })).toHaveCount(
       0,
     );
-    expect(state.calls).not.toContain("GET /admin/users/");
+    expect(state.calls.some((call) => call.includes("/admin/"))).toBe(false);
   });
 }
 

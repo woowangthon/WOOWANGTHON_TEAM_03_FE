@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { statistics, complete } from "../fixtures/admin.js";
 
 export const fakePassword = "FixtureOnly9!";
 export const admin = {
@@ -133,6 +134,24 @@ export async function installAuthFixture(page, { signedIn = null } = {}) {
     }
     if (path.startsWith("/admin/") && state.current.role !== "admin")
       return fail(403, "FORBIDDEN");
+    if (operation === "GET /admin/statistics/") {
+      const result = statistics(Object.fromEntries(url.searchParams));
+      result.summary.metrics = Object.fromEntries(
+        Object.keys(result.summary.metrics).map((key) => [key, complete()]),
+      );
+      result.daily = [];
+      return reply(200, result);
+    }
+    if (operation === "GET /admin/requests/")
+      return reply(200, {
+        count: 0,
+        page: Number(url.searchParams.get("page")),
+        page_size: Number(url.searchParams.get("page_size")),
+        total_pages: 1,
+        next_page: null,
+        previous_page: null,
+        results: [],
+      });
     if (operation === "GET /admin/users/") {
       expect([...url.searchParams.keys()].sort()).toEqual([
         "page",

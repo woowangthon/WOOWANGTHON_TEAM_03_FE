@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { authApi, authMode, requestMode } from "../api/services.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
+import AdminOverview from "./AdminOverview.jsx";
 
 const exampleUsers = [
   {
@@ -210,10 +211,7 @@ export default function Admin() {
       </div>
       {tab === "overview" ? (
         requestMode === "real" ? (
-          <Empty title="통계 연결을 준비하고 있습니다">
-            관리자 조회는 다음 연결 단계입니다. 집계되지 않은 값을 0건으로
-            표시하지 않습니다.
-          </Empty>
+          <AdminOverview />
         ) : (
           <>
             <Notice>

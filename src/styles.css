@@ -1265,6 +1265,119 @@ td {
 .notice {
   white-space: pre-line;
 }
+.audit-filter-grid,
+.audit-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.audit-filters label,
+.audit-facts p {
+  min-width: 0;
+}
+.audit-filter-grid input,
+.audit-filter-grid select {
+  width: 100%;
+}
+.audit-filters details,
+.audit-detail details {
+  margin: 18px 0;
+}
+.audit-detail summary,
+.audit-filters summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+.audit-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  background: var(--bg);
+  padding: 16px;
+}
+.audit-facts p {
+  display: grid;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.audit-refresh {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.admin-overview .metric .metric-unknown {
+  font-size: 22px;
+}
+.admin-overview .metric > .fine-print {
+  font-size: 11px;
+  line-height: 1.6;
+}
+.admin-overview td small {
+  display: block;
+  margin-top: 6px;
+  font-size: 10px;
+}
+.admin-overview td {
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+.audit-chart {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 18px 0;
+}
+.audit-bar-column {
+  flex: 1;
+  min-width: 48px;
+  text-align: center;
+  font-size: 11px;
+}
+.audit-bar-track {
+  height: 120px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.audit-bar-track .bar {
+  width: 70%;
+  border-radius: 5px 5px 0 0;
+}
+.audit-bar-track .partial {
+  opacity: 0.55;
+  border: 1px dashed currentColor;
+}
+.unavailable-bar {
+  width: 70%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+}
+@media (max-width: 700px) {
+  .audit-filter-grid,
+  .audit-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .audit-search {
+    grid-column: 1 / -1;
+  }
+  .audit-filters .panel-title,
+  .audit-detail .panel-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .audit-filters .table-actions,
+  .audit-detail .table-actions {
+    flex-wrap: wrap;
+  }
+}
 .intake-edit,
 .document-card {
   margin-top: 24px;
