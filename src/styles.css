@@ -793,6 +793,11 @@ input[type="checkbox"] {
 .mobile-menu:hover {
   background: var(--state-hover-on-surface);
 }
+.drawer-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
 .connection-status {
   display: inline-flex;
   align-items: center;

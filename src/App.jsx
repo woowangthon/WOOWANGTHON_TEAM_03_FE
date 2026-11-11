@@ -13,6 +13,7 @@ import { authMode, requestApi, requestMode } from "./api/services.js";
 import { stateLabels } from "./domain/requests.js";
 import { Brand, Notice, Spinner } from "./components/Common.jsx";
 import Icon from "./components/Icon.jsx";
+import useNavigationDrawer from "./hooks/useNavigationDrawer.js";
 import Login from "./pages/Login.jsx";
 import Workspace from "./pages/Workspace.jsx";
 import IntakeWorkspace from "./pages/IntakeWorkspace.jsx";
@@ -41,7 +42,14 @@ function Shell() {
   const [error, setError] = useState("");
   const [historyError, setHistoryError] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    isNarrow,
+    menuOpen,
+    setMenuOpen,
+    modalOpen,
+    sidebarRef,
+    menuButtonRef,
+  } = useNavigationDrawer();
   const isAdmin = auth.user.role === "admin";
   const isEmployee = auth.user.role === "user";
   const home = isAdmin ? "/admin" : "/";
@@ -111,14 +119,32 @@ function Shell() {
   return (
     <div className="app-shell">
       {/* Shown only while the drawer is modal (narrow windows); see styles.css. */}
-      {menuOpen && (
+      {modalOpen && (
         <div
           className="scrim"
           aria-hidden="true"
           onClick={() => setMenuOpen(false)}
         />
       )}
-      <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
+      <aside
+        id="navigation-drawer"
+        ref={sidebarRef}
+        className={`sidebar ${modalOpen ? "open" : ""}`}
+        role={modalOpen ? "dialog" : undefined}
+        aria-modal={modalOpen || undefined}
+        aria-label={modalOpen ? "주 메뉴" : undefined}
+        tabIndex={-1}
+        inert={isNarrow && !modalOpen}
+      >
+        {modalOpen && (
+          <button
+            className="mobile-menu drawer-close"
+            aria-label="메뉴 닫기"
+            onClick={() => setMenuOpen(false)}
+          >
+            <Icon name="close" />
+          </button>
+        )}
         <Brand />
         {isEmployee && (
           <button className="new-request" onClick={() => select(null)}>
@@ -237,12 +263,14 @@ function Shell() {
           </button>
         </div>
       </aside>
-      <div className="main-area">
+      <div className="main-area" inert={modalOpen}>
         <header className="topbar">
           <button
             className="mobile-menu"
+            ref={menuButtonRef}
             aria-label="메뉴 열기"
-            aria-expanded={menuOpen}
+            aria-controls="navigation-drawer"
+            aria-expanded={modalOpen}
             onClick={() => setMenuOpen(!menuOpen)}
           >
             <Icon name="menu" />
