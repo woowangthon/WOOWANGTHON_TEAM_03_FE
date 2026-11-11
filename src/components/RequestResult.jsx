@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Notice } from "./Common.jsx";
+import MarkdownAnswer from "./MarkdownAnswer.jsx";
 
 const outcomes = {
   blocked: "보안 정책에 따라 요청을 차단했습니다.",
@@ -39,7 +40,7 @@ export default function RequestResult({ state, answer, disabled }) {
   return (
     <div className="answer">
       <h2>서버에 저장된 답변</h2>
-      <p>{answer}</p>
+      <MarkdownAnswer>{answer}</MarkdownAnswer>
       <button
         type="button"
         className="secondary"
