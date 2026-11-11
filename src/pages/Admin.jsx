@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { authApi, authMode, requestMode } from "../api/services.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
+import Icon from "../components/Icon.jsx";
 import AdminOverview from "./AdminOverview.jsx";
 
 const exampleUsers = [
@@ -192,7 +193,6 @@ export default function Admin() {
   }, [tab, q, status, page, refreshKey]);
   return (
     <div className="page-content">
-      <span className="eyebrow">SECURITY DESK</span>
       <h1>보안 현황</h1>
       <p className="muted">요청의 흐름을 확인하고 사용자 계정을 관리하세요.</p>
       <div className="tabs">
@@ -308,7 +308,10 @@ export default function Admin() {
               disabled={authMode === "mock"}
               onClick={() => setAction({ type: "create" })}
             >
-              ＋ 계정 발급
+              {/* The plus stays in the accessible name; the browser tests look the button up by it. */}
+              <Icon name="add" />
+              <span className="sr-only">＋ </span>
+              계정 발급
             </button>
           </div>
           <Notice kind="error">{error}</Notice>

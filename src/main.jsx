@@ -3,6 +3,9 @@ import { BrowserRouter } from "react-router-dom";
 import { Component } from "react";
 import App from "./App.jsx";
 import { AuthProvider } from "./auth/AuthContext.jsx";
+// Bundled fonts named by --md-ref-typeface-plain in theme/tokens.css.
+import "@fontsource-variable/roboto";
+import "@fontsource-variable/noto-sans-kr";
 import "./styles.css";
 
 class ErrorBoundary extends Component {
@@ -19,7 +22,9 @@ class ErrorBoundary extends Component {
             새로고침해 다시 확인해 주세요. 변경 요청을 자동으로 반복하지
             않습니다.
           </p>
-          <button onClick={() => location.reload()}>새로고침</button>
+          <button className="primary" onClick={() => location.reload()}>
+            새로고침
+          </button>
         </main>
       );
     return this.props.children;

@@ -1,3 +1,7 @@
+import Icon from "./Icon.jsx";
+
+const noticeIcons = { info: "info", warning: "warning", error: "error" };
+
 export function Brand({ compact = false }) {
   return (
     <div className="brand">
@@ -28,6 +32,7 @@ export function Notice({ children, kind = "info" }) {
       className={`notice ${kind}`}
       role={kind === "error" ? "alert" : "status"}
     >
+      <Icon name={noticeIcons[kind]} />
       {children}
     </div>
   ) : null;
@@ -43,9 +48,7 @@ export function Spinner({ children = "불러오는 중" }) {
 export function Empty({ title, children }) {
   return (
     <div className="empty">
-      <span className="empty-icon" aria-hidden="true">
-        ◇
-      </span>
+      <Icon name="info" className="empty-icon" />
       <h3>{title}</h3>
       <p>{children}</p>
     </div>

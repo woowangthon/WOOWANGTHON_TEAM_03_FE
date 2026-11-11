@@ -4,6 +4,7 @@ import { requestApi } from "../api/services.js";
 import { describeApiError } from "../api/http.js";
 import { requestStateLabel, validateIntake } from "../api/requests.js";
 import { Notice, Spinner } from "../components/Common.jsx";
+import Icon from "../components/Icon.jsx";
 import ApprovalReview from "../components/ApprovalReview.jsx";
 import RequestResult from "../components/RequestResult.jsx";
 import { terminalStates } from "../domain/requests.js";
@@ -284,7 +285,9 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
         <span className="avatar-small">동</span>
         <strong>의뢰 상세</strong>
         {data && (
-          <span className="state-tag">{requestStateLabel(data.state)}</span>
+          <span className={`state-tag ${data.state}`}>
+            {requestStateLabel(data.state)}
+          </span>
         )}
       </div>
       {loading && <Spinner>접수한 의뢰를 불러오는 중</Spinner>}
@@ -606,9 +609,6 @@ export default function IntakeWorkspace({
         ) : (
           <section className="welcome">
             {historyHidden && <Notice>내 요청 목록에서 숨겼습니다.</Notice>}
-            <span className="welcome-mark" aria-hidden="true">
-              ✳
-            </span>
             <span className="eyebrow">함께 일하는 안전한 AI</span>
             <h1>
               어떤 일을
@@ -633,7 +633,7 @@ export default function IntakeWorkspace({
             className="secondary new-bottom"
             onClick={() => onSelect(null)}
           >
-            ＋ 새 요청 작성
+            <Icon name="add" /> 새 요청 작성
           </button>
         ) : (
           <>
@@ -675,7 +675,7 @@ export default function IntakeWorkspace({
               {file && (
                 <div className="file-chip">
                   <span>
-                    ▤ {file.name}{" "}
+                    <Icon name="picture_as_pdf" /> {file.name}{" "}
                     <small>{file.size.toLocaleString()}바이트</small>
                   </span>
                   <button
@@ -684,7 +684,7 @@ export default function IntakeWorkspace({
                     disabled={busy || !!attempt}
                     onClick={() => setFile(null)}
                   >
-                    ×
+                    <Icon name="close" />
                   </button>
                 </div>
               )}
@@ -709,7 +709,7 @@ export default function IntakeWorkspace({
                   onChange={attach}
                 />
                 <label className="attach-button" htmlFor="intake-pdf">
-                  ＋ <span>PDF 첨부</span>
+                  <Icon name="attach_file" /> <span>PDF 첨부</span>
                 </label>
                 <span className="character-count">
                   {[...text].length.toLocaleString()} / 4,000

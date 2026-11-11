@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { authMode } from "../api/services.js";
 import { Brand, Notice } from "../components/Common.jsx";
+import Icon from "../components/Icon.jsx";
 
 export default function Login() {
   const auth = useAuth();
@@ -33,7 +34,6 @@ export default function Login() {
       <div className="login-story">
         <Brand />
         <div>
-          <span className="eyebrow">YOUR WORK, PROTECTED.</span>
           <h1>
             좋은 생각에 집중하세요.
             <br />
@@ -51,7 +51,6 @@ export default function Login() {
         </div>
       </div>
       <section className="login-form">
-        <span className="eyebrow">AI WORKSPACE</span>
         <h2>
           {authMode === "mock" ? "동료를 만나보세요" : "다시 만나 반가워요"}
         </h2>
@@ -76,13 +75,13 @@ export default function Login() {
               화면 개발용 체험 · 실제 로그인 아님
             </div>
             <button className="primary full" onClick={() => auth.demo("user")}>
-              직원으로 체험하기 <span>→</span>
+              직원으로 체험하기 <Icon name="arrow_forward" />
             </button>
             <button
               className="secondary full"
               onClick={() => auth.demo("admin")}
             >
-              관리자로 체험하기 <span>→</span>
+              관리자로 체험하기 <Icon name="arrow_forward" />
             </button>
             <p className="fine-print">
               실제 계정이나 비밀번호를 입력하지 않습니다.

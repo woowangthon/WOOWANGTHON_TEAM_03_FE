@@ -17,6 +17,8 @@
     "format:check": "prettier --check src tests *.js *.json index.html README.md"
   },
   "dependencies": {
+    "@fontsource-variable/noto-sans-kr": "5.3.1",
+    "@fontsource-variable/roboto": "5.3.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",

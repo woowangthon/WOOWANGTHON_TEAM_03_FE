@@ -92,3 +92,130 @@ test("mobile layout stays within viewport", async ({ page }) => {
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await expect(page.getByRole("link", { name: "내 계정" })).toBeVisible();
 });
+test("narrow window drawer stays hidden until opened and closes from its scrim", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "직원으로 체험하기" }).click();
+  const account = page.getByRole("link", { name: "내 계정" });
+  await expect(account).toBeHidden();
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(account).toBeVisible();
+  // The open drawer covers the left side; click the scrim strip beside it.
+  await page.locator(".scrim").click({ position: { x: 375, y: 400 } });
+  await expect(account).toBeHidden();
+  await expect(page.locator(".scrim")).toHaveCount(0);
+});
+
+for (const [role, buttonName] of [
+  ["직원", "직원으로 체험하기"],
+  ["관리자", "관리자로 체험하기"],
+]) {
+  test(`${role} drawer keeps keyboard focus inside and Escape returns it`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.getByRole("button", { name: buttonName }).click();
+    const trigger = page.getByRole("button", { name: "메뉴 열기" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const close = page.getByRole("button", { name: "메뉴 닫기" });
+    await expect(close).toBeFocused({ timeout: 1500 });
+    await expect(page.getByRole("dialog", { name: "주 메뉴" })).toBeVisible();
+    await expect(page.locator(".main-area")).toHaveAttribute("inert", "");
+    await page.keyboard.press("Shift+Tab");
+    await expect(
+      page.getByRole("button", { name: "로그아웃", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(close).toBeFocused();
+    await page.locator(".main-area").evaluate((el) => {
+      el.querySelector("button, input, textarea")?.focus();
+    });
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".scrim")).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(page.locator(".sidebar")).toHaveAttribute("inert", "");
+    await expect(page.locator(".main-area")).not.toHaveAttribute("inert");
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  });
+}
+
+test("drawer close button and scrim both return focus to the menu button", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "직원으로 체험하기" }).click();
+  const trigger = page.getByRole("button", { name: "메뉴 열기" });
+  await trigger.click();
+  await page.getByRole("button", { name: "메뉴 닫기" }).click();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await page.locator(".scrim").click({ position: { x: 375, y: 100 } });
+  await expect(trigger).toBeFocused();
+  await expect(page.locator(".main-area")).not.toHaveAttribute("inert");
+});
+
+test("drawer navigation closes the menu and restores a usable focus", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "직원으로 체험하기" }).click();
+  const trigger = page.getByRole("button", { name: "메뉴 열기" });
+  await trigger.click();
+  await page.getByRole("link", { name: "내 계정", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "내 계정", exact: true }),
+  ).toBeVisible();
+  await expect(trigger).toBeFocused();
+  await expect(page.locator(".scrim")).toHaveCount(0);
+  await expect(page.locator(".sidebar")).toHaveAttribute("inert", "");
+});
+
+test("drawer releases modal state at the desktop breakpoint and stays closed on return", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 839, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "직원으로 체험하기" }).click();
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(page.getByRole("button", { name: "메뉴 닫기" })).toBeFocused();
+  await page.setViewportSize({ width: 840, height: 844 });
+  await expect(page.locator(".scrim")).toHaveCount(0);
+  await expect(page.locator(".main-area")).not.toHaveAttribute("inert");
+  await expect(page.locator(".sidebar")).not.toHaveAttribute("inert");
+  await expect(page.getByRole("dialog", { name: "주 메뉴" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "새 요청", exact: true }),
+  ).toBeFocused();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "메뉴 열기" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await expect(page.locator(".sidebar")).toHaveAttribute("inert", "");
+});
+
+test("logging out from the drawer clears modal state for the next login", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "관리자로 체험하기" }).click();
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "직원으로 체험하기" }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  await page.getByRole("button", { name: "직원으로 체험하기" }).click();
+  await expect(page.locator(".main-area")).not.toHaveAttribute("inert");
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(page.getByRole("button", { name: "메뉴 닫기" })).toBeFocused();
+});
