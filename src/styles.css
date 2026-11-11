@@ -911,6 +911,7 @@ input[type="checkbox"] {
   margin-top: 8px;
 }
 .composer {
+  position: relative;
   display: grid;
   gap: 8px;
   padding: 16px 16px 12px 24px;
@@ -923,6 +924,24 @@ input[type="checkbox"] {
 .composer:has(textarea:focus) {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: -2px;
+}
+.composer.drag-active {
+  outline: 2px dashed var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+.composer .drop-prompt {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 16px;
+  border-radius: inherit;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  text-align: center;
+  pointer-events: none;
 }
 .composer textarea,
 .composer textarea:focus {
@@ -1728,6 +1747,10 @@ summary:hover {
   display: block;
   margin-top: 4px;
   color: var(--md-sys-color-on-surface-variant);
+}
+.admin-overview td.audit-diagnostics {
+  min-width: 280px;
+  max-width: 320px;
 }
 
 /* ===== Window sizes: below M3 expanded (840px) the drawer becomes modal ===== */

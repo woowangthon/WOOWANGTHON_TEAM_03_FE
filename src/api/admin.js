@@ -13,9 +13,74 @@ export const routeLabels = { local: "사내", external: "외부", blocked: "차�
 export const inspectionLabels = {
   pending: "검사 대기",
   complete: "검사 완료",
-  degraded: "축소 검사",
+  degraded: "불완전 검사",
   failed: "검사 실패",
 };
+const warningDescriptions = new Map(
+  Object.entries({
+    INJECTION_DETECTED:
+      "문서 안에서 AI 지시문으로 의심되는 내용을 발견했습니다.",
+    LLM_FAILED: "정밀 검사 모델 호출에 실패했습니다.",
+    LLM_OUTPUT_TRUNCATED: "정밀 검사 출력이 상한에서 잘렸습니다.",
+    ROUTE_FAILED: "처리 경로 판정 모델 호출에 실패했습니다.",
+    ROUTE_INPUT_TRUNCATED: "긴 문서의 앞부분만으로 처리 경로를 판정했습니다.",
+    LLM_SPANS_DROPPED:
+      "모델이 원문에 없는 값을 반환해 해당 구간을 제외했습니다.",
+    SPAN_LABEL_UNSUPPORTED: "지원하지 않는 분류의 탐지 구간을 제외했습니다.",
+    SPAN_SAVE_SKIPPED: "탐지 구간 일부를 저장하지 못했습니다.",
+    WARNING_OTHER: "기타 검사 경고가 기록되었습니다.",
+  }),
+);
+const failureDescriptions = new Map(
+  Object.entries({
+    PDF_NO_TEXT: "PDF에서 검사할 텍스트를 읽지 못했습니다.",
+    INVALID_PDF: "PDF 파일을 읽을 수 없습니다.",
+    PDF_ENCRYPTED: "암호화된 PDF를 읽을 수 없습니다.",
+    PDF_PAGE_LIMIT: "PDF 쪽 수가 허용 범위를 초과했습니다.",
+    MODEL_UNAVAILABLE:
+      "모델 서비스 연결 실패 또는 응답 지연으로 처리를 완료하지 못했습니다.",
+    MODEL_AUTH: "모델 서비스 인증에 실패했습니다.",
+    MODEL_INPUT: "모델 서비스가 검사 입력을 거부했습니다.",
+    MODEL_SERVER_ERROR: "모델 서비스에서 오류가 발생했습니다.",
+    INSPECTION_DEGRADED: "검사가 불완전해 처리를 중단했습니다.",
+    SPAN_SAVE_SKIPPED: "탐지 구간을 온전히 저장하지 못해 처리를 중단했습니다.",
+    MASK_MISMATCH:
+      "저장된 정보로 만든 가림 결과가 검사 결과와 달라 처리를 중단했습니다.",
+    DECISION_UNKNOWN: "처리 경로 판정 결과를 확인하지 못했습니다.",
+    LEAK_BLOCKED: "전송 직전 검사에서 민감정보가 남아 전송을 중단했습니다.",
+    EXTERNAL_REFUSAL: "외부 AI가 요청을 거부했습니다.",
+    EXTERNAL_RATE_LIMITED: "외부 AI의 요청 한도로 처리를 완료하지 못했습니다.",
+    ANSWER_TRUNCATED: "답변이 생성 상한에서 잘렸습니다.",
+    ANSWER_EMPTY: "사용할 수 있는 답변이 생성되지 않았습니다.",
+    RESTORE_INCOMPLETE: "가린 정보의 복원이 완료되지 않았습니다.",
+    APPROVAL_NOT_AVAILABLE: "외부 전송 승인 대기로 전환하지 못했습니다.",
+    PREVIEW_NOT_AVAILABLE: "승인 전 확인 정보를 준비하지 못했습니다.",
+    INTERNAL_ERROR: "처리 중 내부 오류가 발생했습니다.",
+    STUCK: "진행 상태가 장시간 유지되어 처리를 종료했습니다.",
+  }),
+);
+const failureStages = new Map(
+  Object.entries({
+    extraction: "PDF 추출",
+    inspection: "민감정보 검사",
+    decision: "경로 판정",
+    local_answer: "사내 답변 생성",
+    external_send: "외부 요청 처리",
+    restore: "답변 복원",
+    approval: "승인 준비",
+    system: "시스템 처리",
+  }),
+);
+export function warningLabel(code) {
+  return `${warningDescriptions.get(code) || "등록되지 않은 경고 코드입니다."} (${code})`;
+}
+export function failureLabel(code) {
+  if (!code) return "미기록";
+  return `${failureDescriptions.get(code) || "등록되지 않은 실패 코드입니다."} (${code})`;
+}
+export function failureStageLabel(stage) {
+  return failureStages.get(stage) || stage || "미기록";
+}
 const filterKeys = [
   "q",
   "request_id",

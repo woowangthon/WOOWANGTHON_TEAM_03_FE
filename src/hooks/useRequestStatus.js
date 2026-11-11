@@ -8,12 +8,15 @@ const pollingStates = new Set([
   "processing",
   "awaiting_approval",
 ]);
+const processingStates = new Set(["queued", "analyzing", "processing"]);
+const automaticWaitLimit = 5 * 60 * 1000;
 
 /** One read at a time; mutations and navigation invalidate older reads. */
 export function useRequestStatus(auth, id, onHistoryChange) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [waiting, setWaiting] = useState({ seconds: 0, paused: false });
   const [version, setVersion] = useState(0);
   const stop = useRef(() => {});
   const lastState = useRef(null);
@@ -24,17 +27,45 @@ export function useRequestStatus(auth, id, onHistoryChange) {
     let active = true,
       timer,
       deadline,
+      waitTimer,
       controller;
+    let waitStarted = null;
     setLoading(true);
     setError("");
+    setWaiting({ seconds: 0, paused: false });
     const pause = () => {
       active = false;
       clearTimeout(timer);
       clearTimeout(deadline);
+      clearTimeout(waitTimer);
+      document.removeEventListener("visibilitychange", updateWait);
       controller?.abort();
     };
     stop.current = pause;
+    function updateWait() {
+      if (!active || waitStarted === null) return;
+      clearTimeout(waitTimer);
+      const elapsed = Math.max(0, performance.now() - waitStarted);
+      if (elapsed >= automaticWaitLimit) {
+        pause();
+        setWaiting({ seconds: 300, paused: true });
+        setLoading(false);
+        return;
+      }
+      setWaiting({ seconds: Math.floor(elapsed / 1000), paused: false });
+      waitTimer = setTimeout(
+        updateWait,
+        Math.min(1000, automaticWaitLimit - elapsed),
+      );
+    }
     async function read() {
+      if (
+        waitStarted !== null &&
+        performance.now() - waitStarted >= automaticWaitLimit
+      ) {
+        updateWait();
+        return;
+      }
       controller = new AbortController();
       let timedOut = false;
       deadline = setTimeout(() => {
@@ -49,13 +80,27 @@ export function useRequestStatus(auth, id, onHistoryChange) {
         if (!active) return;
         setData(next);
         setError("");
+        if (processingStates.has(next.state)) {
+          if (waitStarted === null) {
+            waitStarted = performance.now();
+            updateWait();
+          }
+        } else {
+          waitStarted = null;
+          clearTimeout(waitTimer);
+          setWaiting({ seconds: 0, paused: false });
+        }
         if (lastState.current !== next.state) {
           lastState.current = next.state;
           latest.current.onHistoryChange();
         }
-        if (pollingStates.has(next.state)) timer = setTimeout(read, 2000);
+        if (active && pollingStates.has(next.state))
+          timer = setTimeout(read, 2000);
       } catch (err) {
         if (!active) return;
+        clearTimeout(waitTimer);
+        waitStarted = null;
+        setWaiting({ seconds: 0, paused: false });
         // Never retain an original PDF or actionable stale record after denial.
         setData(null);
         setError(
@@ -68,6 +113,7 @@ export function useRequestStatus(auth, id, onHistoryChange) {
         if (active) setLoading(false);
       }
     }
+    document.addEventListener("visibilitychange", updateWait);
     read();
     return pause;
   }, [id, version]);
@@ -76,6 +122,7 @@ export function useRequestStatus(auth, id, onHistoryChange) {
     data,
     loading,
     error,
+    waiting,
     pause: () => stop.current(),
     accept: (next) => {
       setData(next);

@@ -1,4 +1,4 @@
-// Synthetic HTTP contracts for BE PR #11 (290deff); no model or server calls.
+// Synthetic HTTP contracts checked against BE PR #11 (12f7ab5); no live calls.
 export const requestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 export const inputText = "😀 요약해 주세요.\n\n가상회사 보고서";
 export function previewFixture({
@@ -34,6 +34,31 @@ const json = (data, status = 200) =>
     status,
     headers: { "Content-Type": "application/json" },
   });
+
+export function combinedPreviewFixture(expiresAt) {
+  const data = previewFixture({ expiresAt });
+  Object.assign(data.preview, {
+    input_text: "  😀 김민수\r\n요약해 주세요.  \n\n🛰️ 가상회사 e\u0301\n끝",
+    detection_count: 2,
+    detection_spans: [
+      {
+        id: "instruction-person",
+        input_source: "instruction",
+        start_offset: 4,
+        end_offset: 7,
+        label: "person",
+      },
+      {
+        id: "pdf-company",
+        input_source: "pdf",
+        start_offset: 24,
+        end_offset: 28,
+        label: "company",
+      },
+    ],
+  });
+  return data;
+}
 const error = (code, status = 409) =>
   json({ error: { code, message: `가상 오류: ${code}` } }, status);
 
