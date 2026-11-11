@@ -178,6 +178,137 @@ test("completed result copies only the final answer and reports clipboard failur
   await expect(page.getByText(/답변을 복사하지 못했습니다/)).toBeVisible();
 });
 
+test("completed markdown renders readable blocks, preserves source copying and fits mobile", async ({
+  page,
+}, testInfo) => {
+  const { state } = await setup(page, "completed");
+  const source = [
+    "# 가상 보고서",
+    "",
+    "**핵심 내용**과 `요약 코드`입니다.",
+    "둘째 줄도 유지합니다.",
+    "",
+    "## 검토 항목",
+    "",
+    "- 첫 항목",
+    "  - 하위 항목",
+    "- 둘째 항목",
+    "",
+    "1. 자료 확인",
+    "2. 결과 검토",
+    "",
+    "> 가상 자료를 바탕으로 작성했습니다.",
+    "",
+    "| 항목 | 결과 | 담당 | 비고 |",
+    "| --- | --- | --- | --- |",
+    "| 검토 | 완료 | 가상 담당자 | 추가 확인 |",
+    "",
+    "```js",
+    'const example = "' + "synthetic_".repeat(30) + '";',
+    "```",
+    "",
+    "[참고 자료](https://example.com/reference)",
+  ].join("\n");
+  state.row.answer_text = source;
+  await page.reload();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        async writeText(text) {
+          window.copiedAnswer = text;
+        },
+      },
+    });
+  });
+  const answer = page.locator(".markdown-answer");
+  await expect(
+    answer.getByRole("heading", { name: "가상 보고서", level: 1 }),
+  ).toBeVisible();
+  await expect(answer.locator("strong")).toHaveText("핵심 내용");
+  await expect(answer.locator("ul ul li")).toHaveText("하위 항목");
+  await expect(answer.locator("ol li")).toHaveCount(2);
+  await expect(answer.locator("blockquote")).toContainText("가상 자료");
+  await expect(answer.getByRole("table")).toBeVisible();
+  await expect(answer.locator("pre code")).toContainText("const example");
+  await expect(answer.locator("p").first()).toHaveCSS(
+    "white-space",
+    "pre-line",
+  );
+  await expect(answer.getByRole("link", { name: "참고 자료" })).toHaveAttribute(
+    "rel",
+    "noopener noreferrer",
+  );
+  await page.getByRole("button", { name: "답변 복사", exact: true }).click();
+  expect(await page.evaluate(() => window.copiedAnswer)).toBe(source);
+  await answer.screenshot({
+    path: testInfo.outputPath("markdown-desktop.png"),
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    answer.getByRole("heading", { name: "가상 보고서" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  expect(
+    await answer
+      .locator("pre")
+      .evaluate((el) => el.scrollWidth > el.clientWidth),
+  ).toBe(true);
+  expect(
+    await answer
+      .locator(".markdown-table")
+      .evaluate((el) => el.scrollWidth > el.clientWidth),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("markdown-mobile.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+});
+
+test("markdown cannot execute HTML or unsafe links or load remote images", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "completed");
+  state.row.answer_text = [
+    "일반 텍스트도 그대로 보입니다.",
+    "",
+    "<script>window.markdownExecuted = true</script>",
+    "",
+    '<img src="https://example.com/raw.png" onerror="window.markdownExecuted = true">',
+    "",
+    "[위험 링크](javascript:alert%281%29)",
+    "",
+    "![외부 그림](https://example.com/tracker.png)",
+    "",
+    "```html",
+    "<script>표시만 하는 예시</script>",
+    "```",
+  ].join("\n");
+  const remoteRequests = [];
+  page.on("request", (request) => {
+    if (request.url().startsWith("https://example.com/"))
+      remoteRequests.push(request.url());
+  });
+  await page.reload();
+  const answer = page.locator(".markdown-answer");
+  await expect(answer).toContainText("일반 텍스트도 그대로 보입니다.");
+  await expect(
+    answer.locator("script, img, a[href^='javascript:']"),
+  ).toHaveCount(0);
+  await expect(answer.getByRole("link", { name: "위험 링크" })).toHaveCount(0);
+  await expect(answer).toContainText("[이미지: 외부 그림]");
+  await expect(answer.locator("pre code")).toHaveText(
+    "<script>표시만 하는 예시</script>\n",
+  );
+  expect(await page.evaluate(() => window.markdownExecuted)).toBeUndefined();
+  expect(remoteRequests).toEqual([]);
+});
+
 for (const [stateName, label, message] of [
   ["blocked", "정책 차단", "보안 정책에 따라 요청을 차단했습니다."],
   ["rejected", "전송 거절", "외부 전송을 거절해 요청이 종료되었습니다."],

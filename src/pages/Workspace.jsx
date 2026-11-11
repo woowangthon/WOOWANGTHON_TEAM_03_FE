@@ -9,6 +9,7 @@ import {
   validateInstruction,
 } from "../domain/requests.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
+import MarkdownAnswer from "../components/MarkdownAnswer.jsx";
 
 export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
   const auth = useAuth();
@@ -272,7 +273,7 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                       ? "사내 처리 예시 · 외부 미전송"
                       : "외부 처리 예시 · 실제 전송 없음"}
                   </div>
-                  <p className="answer">{request.answer}</p>
+                  <MarkdownAnswer>{request.answer}</MarkdownAnswer>
                   <button
                     className="text-button"
                     onClick={async () => {
