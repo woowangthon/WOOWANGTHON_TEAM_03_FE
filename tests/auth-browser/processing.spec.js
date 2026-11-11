@@ -1,6 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { installAuthFixture, employee, admin } from "./auth-fixture.js";
-import { inputText, previewFixture } from "../fixtures/processing.js";
+import {
+  inputText,
+  previewFixture,
+  combinedPreviewFixture,
+} from "../fixtures/processing.js";
 
 const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 async function setup(page, initial = "preparing") {
@@ -20,6 +24,7 @@ async function setup(page, initial = "preparing") {
     loseHide: false,
     hideError: null,
     previewReads: 0,
+    preview: null,
     previewError: null,
     holdPreview: null,
     decisions: [],
@@ -79,7 +84,8 @@ async function setup(page, initial = "preparing") {
       if (state.holdPreview) await state.holdPreview;
       if (state.previewError) return fail(...state.previewError);
       return json(
-        previewFixture({ clean: state.clean, expiresAt: state.expiresAt }),
+        state.preview ||
+          previewFixture({ clean: state.clean, expiresAt: state.expiresAt }),
       );
     }
     if (path.endsWith("/approval/")) {
@@ -144,6 +150,124 @@ async function setup(page, initial = "preparing") {
   return { state, auth };
 }
 const statusTag = (page) => page.locator(".intake-detail .state-tag");
+
+test("five minutes of processing pauses reads, keeps the last state and recovers by GET", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "queued");
+  await page.clock.fastForward(120000);
+  await expect(
+    page.getByText("상태 확인을 시작한 뒤 2분 0초가 지났습니다."),
+  ).toBeVisible();
+  state.row.state = "analyzing";
+  await page.clock.fastForward(2100);
+  await expect(statusTag(page)).toHaveText("검사 중");
+  await page.clock.fastForward(176900);
+  await expect(
+    page.getByText("상태 확인을 시작한 뒤 4분 59초가 지났습니다."),
+  ).toBeVisible();
+  await page.clock.fastForward(1000);
+  await expect(
+    page.getByText(/5분 동안 처리 완료를 확인하지 못해/),
+  ).toBeVisible();
+  await expect(statusTag(page)).toHaveText("검사 중");
+  const reads = state.reads;
+  await page.clock.fastForward(60000);
+  expect(state.reads).toBe(reads);
+  state.row.state = "completed";
+  state.row.answer_text = "서버에 저장된 최종 답변";
+  await page
+    .getByRole("button", { name: "상태 다시 조회", exact: true })
+    .click();
+  await expect(statusTag(page)).toHaveText("완료");
+  await expect(
+    page.getByText(/5분 동안 처리 완료를 확인하지 못해/),
+  ).toHaveCount(0);
+  expect(state.starts).toBe(0);
+  expect(state.decisions).toEqual([]);
+});
+
+test("approval countdown continues beyond five minutes and an approval starts a fresh processing wait", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "awaiting_approval");
+  await expect(page.locator(".approval-review")).toBeVisible();
+  await page.clock.fastForward(6 * 60 * 1000);
+  await expect(page.locator(".approval-review")).toBeVisible();
+  await expect(page.locator(".approval-deadline")).toContainText("24분");
+  await expect(
+    page.getByText(/5분 동안 처리 완료를 확인하지 못해/),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "외부 전송 승인", exact: true })
+    .click();
+  await expect(statusTag(page)).toHaveText("처리 대기");
+  await expect(
+    page.getByRole("button", { name: "상태 다시 조회", exact: true }),
+  ).toBeVisible();
+  await page.clock.fastForward(299000);
+  await expect(
+    page.getByText(/5분 동안 처리 완료를 확인하지 못해/),
+  ).toHaveCount(0);
+  await page.clock.fastForward(1000);
+  await expect(
+    page.getByText(/5분 동안 처리 완료를 확인하지 못해/),
+  ).toBeVisible();
+  expect(state.decisions).toEqual(["approved"]);
+});
+
+test("wait limit aborts an outstanding read and ignores its late result until a manual read", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "processing");
+  await page.clock.fastForward(297000);
+  await expect(
+    page.getByText("상태 확인을 시작한 뒤 4분 57초가 지났습니다."),
+  ).toBeVisible();
+  state.row.state = "completed";
+  state.row.answer_text = "늦게 완료된 답변";
+  let release;
+  state.hold = new Promise((resolve) => {
+    release = resolve;
+  });
+  const before = state.reads;
+  await page.clock.fastForward(2000);
+  await expect.poll(() => state.reads).toBe(before + 1);
+  await page.clock.fastForward(1000);
+  await expect(
+    page.getByText(/5분 동안 처리 완료를 확인하지 못해/),
+  ).toBeVisible();
+  state.hold = null;
+  release();
+  await page.clock.fastForward(10000);
+  await expect(statusTag(page)).toHaveText("처리 중");
+  expect(state.reads).toBe(before + 1);
+  await page
+    .getByRole("button", { name: "상태 다시 조회", exact: true })
+    .click();
+  await expect(statusTag(page)).toHaveText("완료");
+});
+
+test("combined code-point preview renders both input sources without normalizing its text", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "awaiting_approval");
+  state.preview = combinedPreviewFixture(state.expiresAt);
+  await page.reload();
+  const preview = page.locator(".approval-review");
+  await expect(preview.locator("mark")).toHaveText(["김민수", "가상회사"]);
+  expect(await preview.locator(".highlight-preview").textContent()).toBe(
+    state.preview.preview.input_text,
+  );
+  await expect(
+    preview.locator(".approval-detections li").first(),
+  ).toContainText("요청문");
+  await expect(preview.locator(".approval-detections li").last()).toContainText(
+    "PDF 본문",
+  );
+  await preview.locator(".approval-detections button").last().click();
+  await expect(preview.locator("mark").last()).toBeFocused();
+});
 const hideButton = (page) =>
   page.getByRole("button", { name: "목록에서 숨기기", exact: true });
 const confirmHideButton = (page) =>
@@ -502,6 +626,9 @@ test("zero detections still require a choice and rejection clears the preview", 
   state.clean = true;
   await page.reload();
   await expect(review(page).getByText("탐지 구간 0개")).toBeVisible();
+  await expect(review(page)).toContainText(
+    "검사 원문을 가리지 않고 외부 AI로 전송합니다.",
+  );
   await expect(approvalButton(page)).toBeEnabled();
   expect(state.decisions).toEqual([]);
   await review(page)

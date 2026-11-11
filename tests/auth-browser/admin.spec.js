@@ -47,7 +47,9 @@ async function installAudit(page) {
     }
     if (url.pathname === `/api/v1/admin/requests/${auditId}/`) {
       expect(url.search).toBe("");
-      return route.fulfill({ json: { request: auditDetailFixture() } });
+      return route.fulfill({
+        json: { request: state.detail || auditDetailFixture() },
+      });
     }
     const p = Number(url.searchParams.get("page"));
     return route.fulfill({
@@ -60,6 +62,7 @@ async function installAudit(page) {
         previous_page: p === 2 ? 1 : null,
         results: [
           auditRow({
+            ...state.row,
             original_filename: p === 1 ? "가상-감사.pdf" : "둘째-페이지.pdf",
             ...(state.totals
               ? { inspection_status: "complete", detection_count: 0 }
@@ -71,6 +74,49 @@ async function installAudit(page) {
   });
   return { auth, state };
 }
+
+test("audit explains new failures and warnings while keeping delivery confirmation separate", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { state } = await installAudit(page);
+  state.row = {
+    state: "failed",
+    inspection_status: "degraded",
+    warning_codes: ["INJECTION_DETECTED", "FUTURE_WARNING"],
+    error_code: "SPAN_SAVE_SKIPPED",
+  };
+  state.detail = {
+    ...auditDetailFixture(),
+    ...state.row,
+    failure: { stage: "inspection", code: "MASK_MISMATCH" },
+    delivery: {
+      status: "confirmed_sent",
+      external_send_started_at: "2026-11-10T02:10:00Z",
+    },
+  };
+  await page.goto("/admin");
+  await expect(
+    page.getByRole("option", { name: "불완전 검사", exact: true }),
+  ).toHaveCount(1);
+  const row = page.getByRole("row").filter({ hasText: auditId });
+  await expect(row).toContainText("불완전 검사");
+  await expect(row).toContainText("AI 지시문으로 의심");
+  await expect(row).toContainText(
+    "등록되지 않은 경고 코드입니다. (FUTURE_WARNING)",
+  );
+  await expect(row).toContainText(
+    "탐지 구간을 온전히 저장하지 못해 처리를 중단했습니다. (SPAN_SAVE_SKIPPED)",
+  );
+  expect((await row.boundingBox()).height).toBeLessThan(300);
+  await page.getByRole("button", { name: `${auditId} 상세 보기` }).click();
+  const detail = page.getByRole("region", { name: "요청 감사 상세" });
+  await expect(detail).toContainText("민감정보 검사");
+  await expect(detail).toContainText("가림 결과가 검사 결과와 달라");
+  await expect(detail).toContainText("MASK_MISMATCH");
+  await expect(detail).toContainText("외부 전송 확인");
+  await expect(page.locator("body")).not.toContainText("SECRET");
+});
 test("audit displays uncertain metrics, actual zeros, safe detail and supported filters", async ({
   page,
 }) => {

@@ -71,6 +71,7 @@ async function setup(page) {
         ...body,
         file: file ? { name: file.name, text: await file.text() } : null,
       });
+      if (state.holdPost) await state.holdPost;
       if (state.keyConflict)
         return fail(
           409,
@@ -151,6 +152,176 @@ async function setup(page) {
   });
   return { state, auth };
 }
+
+async function fileDrag(page, files) {
+  return page.evaluateHandle((items) => {
+    const transfer = new DataTransfer();
+    for (const item of items) {
+      const contents =
+        item.size === undefined ? item.text : new Uint8Array(item.size);
+      transfer.items.add(
+        new File([contents], item.name, {
+          type: item.type || "application/pdf",
+        }),
+      );
+    }
+    return transfer;
+  }, files);
+}
+
+test("PDF drop highlights the composer and Enter submits the exact PDF and prompt once", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  await page.goto("/");
+  const input = page.getByLabel("요청 내용", { exact: true });
+  const prompt = "  드래그 PDF\n😀 요청문 보존  ";
+  await input.fill(prompt);
+  const transfer = await fileDrag(page, [
+    { name: "drag.pdf", text: pdfFixture.buffer.toString() },
+  ]);
+  await page
+    .locator(".composer")
+    .dispatchEvent("dragenter", { dataTransfer: transfer });
+  await expect(page.locator(".composer").getByRole("status")).toContainText(
+    "PDF 파일 1개를 놓아 첨부하세요.",
+  );
+  await input.dispatchEvent("dragenter", { dataTransfer: transfer });
+  await input.dispatchEvent("dragleave", { dataTransfer: transfer });
+  await expect(page.locator(".composer")).toHaveClass(/drag-active/);
+  await input.dispatchEvent("dragover", { dataTransfer: transfer });
+  await input.dispatchEvent("drop", { dataTransfer: transfer });
+  await transfer.dispose();
+  await expect(page.locator(".composer")).not.toHaveClass(/drag-active/);
+  await expect(page.locator(".file-chip")).toContainText("drag.pdf");
+  expect(state.posts).toHaveLength(0);
+  await input.press("Enter");
+  await expect(page).toHaveURL(new RegExp(id));
+  expect(state.posts).toHaveLength(1);
+  // Browsers serialize text-field line breaks as CRLF in multipart/form-data.
+  expect(state.posts[0].instruction).toBe(prompt.replace(/\n/g, "\r\n"));
+  expect(state.posts[0].file).toEqual({
+    name: "drag.pdf",
+    text: pdfFixture.buffer.toString(),
+  });
+});
+
+test("invalid and multiple drops preserve the current file, while a valid PDF replaces it", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  await page.goto("/");
+  await page.getByLabel("요청 내용", { exact: true }).fill("보존할 요청문");
+  await page.locator("#intake-pdf").setInputFiles(pdfFixture);
+  for (const files of [
+    [{ name: "wrong.txt", text: "text", type: "text/plain" }],
+    [{ name: "empty.pdf", text: "" }],
+    [{ name: "large.pdf", size: 10_000_001 }],
+    [
+      { name: "one.pdf", text: "first" },
+      { name: "two.pdf", text: "second" },
+    ],
+  ]) {
+    const transfer = await fileDrag(page, files);
+    await page
+      .locator(".composer")
+      .dispatchEvent("drop", { dataTransfer: transfer });
+    await transfer.dispose();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.locator(".file-chip")).toContainText(pdfFixture.name);
+    await expect(page.getByLabel("요청 내용", { exact: true })).toHaveValue(
+      "보존할 요청문",
+    );
+  }
+  const replacement = await fileDrag(page, [
+    { name: "replacement.pdf", text: "%PDF replacement" },
+  ]);
+  await page
+    .locator(".composer")
+    .dispatchEvent("drop", { dataTransfer: replacement });
+  await replacement.dispose();
+  await expect(page.locator(".file-chip")).toContainText("replacement.pdf");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(state.posts).toHaveLength(0);
+  await page.getByRole("button", { name: "첨부 제거" }).click();
+  await expect(page.locator(".file-chip")).toHaveCount(0);
+});
+
+test("Shift Enter creates a newline and Korean composition Enter never submits", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  await page.goto("/");
+  const input = page.getByLabel("요청 내용", { exact: true });
+  await input.fill("첫 줄");
+  await input.press("End");
+  await input.press("Shift+Enter");
+  await input.pressSequentially("second");
+  await expect(input).toHaveValue("첫 줄\nsecond");
+  await input.dispatchEvent("compositionstart");
+  await input.dispatchEvent("keydown", { key: "Enter", keyCode: 13 });
+  await input.dispatchEvent("compositionend");
+  await input.dispatchEvent("keydown", {
+    key: "Enter",
+    isComposing: true,
+    keyCode: 13,
+  });
+  await input.dispatchEvent("keydown", { key: "Enter", keyCode: 229 });
+  await input.dispatchEvent("keydown", {
+    key: "Enter",
+    keyCode: 13,
+    repeat: true,
+  });
+  expect(state.posts).toHaveLength(0);
+  await input.press("Enter");
+  await expect(page).toHaveURL(new RegExp(id));
+  expect(state.posts).toHaveLength(1);
+  expect(state.posts[0].instruction).toBe("첫 줄\nsecond");
+});
+
+test("pending intake blocks more Enter events and drops and lost receipt keeps the original bytes", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  state.losePost = true;
+  let release;
+  state.holdPost = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.goto("/");
+  const input = page.getByLabel("요청 내용", { exact: true });
+  await input.fill("중복 방지");
+  await page.locator("#intake-pdf").setInputFiles(pdfFixture);
+  await input.press("Enter");
+  await expect(input).toBeDisabled();
+  await input.dispatchEvent("keydown", { key: "Enter", keyCode: 13 });
+  const transfer = await fileDrag(page, [
+    { name: "ignored.pdf", text: "other" },
+  ]);
+  await page
+    .locator(".composer")
+    .dispatchEvent("drop", { dataTransfer: transfer });
+  await expect(page.locator(".file-chip")).toContainText(pdfFixture.name);
+  expect(state.posts).toHaveLength(1);
+  release();
+  await expect(page.getByRole("alert")).toContainText(
+    "서버 응답을 확인하지 못했습니다",
+  );
+  await page
+    .locator(".composer")
+    .dispatchEvent("drop", { dataTransfer: transfer });
+  await transfer.dispose();
+  await expect(page.locator(".file-chip")).toContainText(pdfFixture.name);
+  await input.dispatchEvent("keydown", { key: "Enter", keyCode: 13 });
+  expect(state.posts).toHaveLength(1);
+  await page
+    .getByRole("button", { name: "같은 접수 번호로 확인", exact: true })
+    .click();
+  await expect(page).toHaveURL(new RegExp(id));
+  expect(state.posts).toHaveLength(2);
+  expect(state.posts[0]).toEqual(state.posts[1]);
+  expect(state.rows).toHaveLength(1);
+});
 
 test("PDF-first intake adds instruction to the same request and reload never creates a request", async ({
   page,

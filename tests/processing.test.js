@@ -12,6 +12,7 @@ import {
   previewFixture,
   requestId as id,
   inputText,
+  combinedPreviewFixture,
 } from "./fixtures/processing.js";
 const user = { id: "owner", role: "user" };
 function setup(options) {
@@ -41,6 +42,30 @@ test("four contracts use session/CSRF and exact bodies; approval is not delivery
   assert.match(posts[0].url, /\/start\/$/);
   assert.match(posts[1].url, /\/approval\/$/);
   assert.match(posts[2].url, /\/hide\/$/);
+});
+
+test("combined inspection offsets preserve instruction, CRLF, supplementary characters and decomposed text", () => {
+  const fixture = combinedPreviewFixture();
+  const result = approvalPreview(fixture, id);
+  assert.equal(result.input_text, fixture.preview.input_text);
+  assert.deepEqual(
+    result.spans.map((s) => [s.input_source, s.text]),
+    [
+      ["instruction", "김민수"],
+      ["pdf", "가상회사"],
+    ],
+  );
+  assert.deepEqual(
+    result.spans.map((s) => [s.start, s.end]),
+    [
+      [5, 8],
+      [26, 30],
+    ],
+  );
+  assert.equal(
+    result.input_text.slice(result.spans[1].start, result.spans[1].end),
+    "가상회사",
+  );
 });
 test("code-point offsets preserve emoji and line breaks; invalid spans fail closed", () => {
   const p = approvalPreview(previewFixture(), id);

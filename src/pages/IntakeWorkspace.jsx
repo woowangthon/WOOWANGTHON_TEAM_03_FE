@@ -18,6 +18,12 @@ const extractionLabels = {
   ready: "추출 완료",
   failed: "추출 실패",
 };
+const processingMessages = {
+  queued: "처리 순서를 기다리고 있습니다.",
+  analyzing:
+    "민감정보를 검사하고 있습니다. 문서 길이에 따라 시간이 걸릴 수 있습니다.",
+  processing: "답변을 처리하고 있습니다.",
+};
 
 function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
   const auth = useAuth();
@@ -321,14 +327,17 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
             </Notice>
           )}
           {["queued", "analyzing", "processing"].includes(data.state) && (
-            <Notice>
-              {data.state === "queued"
-                ? "처리 순서를 기다리고 있습니다."
-                : data.state === "analyzing"
-                  ? "민감정보를 검사하고 있습니다. 문서 길이에 따라 시간이 걸릴 수 있습니다."
-                  : "답변을 처리하고 있습니다."}{" "}
-              상태를 자동으로 확인합니다.
-            </Notice>
+            <>
+              <Notice kind={status.waiting.paused ? "warning" : "info"}>
+                {status.waiting.paused
+                  ? "5분 동안 처리 완료를 확인하지 못해 자동 조회를 멈췄습니다. 표시된 상태는 마지막 조회 결과입니다. 서버에서 처리가 계속될 수 있으니 상태 다시 조회로 결과를 확인해 주세요."
+                  : `${processingMessages[data.state]} 상태를 자동으로 확인합니다.`}
+              </Notice>
+              <p className="fine-print" aria-live="off">
+                상태 확인을 시작한 뒤 {Math.floor(status.waiting.seconds / 60)}
+                분 {status.waiting.seconds % 60}초가 지났습니다.
+              </p>
+            </>
           )}
           {data.document && (
             <div className="document-card">
@@ -522,6 +531,9 @@ export default function IntakeWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submitting = useRef(false);
+  const composing = useRef(false);
+  const dragDepth = useRef(0);
+  const [dragActive, setDragActive] = useState(false);
   const selection = useRef(selectedId);
   selection.current = selectedId;
   const mounted = useRef(true);
@@ -548,6 +560,8 @@ export default function IntakeWorkspace({
     };
     setAttempt(submission);
     submitting.current = true;
+    dragDepth.current = 0;
+    setDragActive(false);
     setBusy(true);
     setError("");
     setDraft((current) => ({ ...current, failureCode: "" }));
@@ -579,15 +593,17 @@ export default function IntakeWorkspace({
     }
   }
   function attach(event) {
-    const files = event.target.files;
-    const selected = files?.[0];
-    const count = files?.length || 0;
+    const files = Array.from(event.target.files || []);
     event.target.value = "";
-    if (!selected) return;
-    if (count > 1) {
+    if (files?.length) attachFiles(files);
+  }
+  function attachFiles(files) {
+    if (busy || attempt || submitting.current) return;
+    if (files.length !== 1) {
       setError("PDF 파일 1개만 선택해 주세요.");
       return;
     }
+    const selected = files[0];
     const validation = validateIntake("", selected);
     if (validation) {
       setError(validation);
@@ -595,6 +611,44 @@ export default function IntakeWorkspace({
     }
     setFile(selected);
     setError("");
+  }
+  function dragEnter(event) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    if (!busy && !attempt && !submitting.current) setDragActive(true);
+  }
+  function dragLeave() {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (!dragDepth.current) setDragActive(false);
+  }
+  function dragOver(event) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = busy || attempt ? "none" : "copy";
+  }
+  function drop(event) {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragActive(false);
+    attachFiles(event.dataTransfer.files);
+  }
+  function submitOnEnter(event) {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey ||
+      composing.current ||
+      event.nativeEvent.isComposing ||
+      event.keyCode === 229
+    )
+      return;
+    event.preventDefault();
+    if (!event.repeat && !busy && !attempt && !submitting.current)
+      event.currentTarget.form.requestSubmit();
   }
   return (
     <div className="workspace intake-workspace">
@@ -671,7 +725,19 @@ export default function IntakeWorkspace({
                   </button>
                 </div>
               )}
-            <form className="composer" onSubmit={submit}>
+            <form
+              className={`composer${dragActive ? " drag-active" : ""}`}
+              onSubmit={submit}
+              onDragEnter={dragEnter}
+              onDragLeave={dragLeave}
+              onDragOver={dragOver}
+              onDrop={drop}
+            >
+              {dragActive && (
+                <p className="drop-prompt" role="status">
+                  PDF 파일 1개를 놓아 첨부하세요.
+                </p>
+              )}
               {file && (
                 <div className="file-chip">
                   <span>
@@ -697,6 +763,14 @@ export default function IntakeWorkspace({
                 value={text}
                 disabled={busy || !!attempt}
                 onChange={(e) => setText(e.target.value)}
+                onKeyDown={submitOnEnter}
+                onCompositionStart={() => {
+                  composing.current = true;
+                }}
+                onCompositionEnd={() => {
+                  composing.current = false;
+                }}
+                aria-describedby="intake-input-help"
                 placeholder="동료에게 부탁할 일을 적어 주세요"
               />
               <div className="composer-tools">
@@ -728,6 +802,9 @@ export default function IntakeWorkspace({
                 </button>
               </div>
             </form>
+            <p className="composer-caption" id="intake-input-help">
+              Enter로 접수 · Shift+Enter로 줄바꿈 · PDF를 입력창에 끌어 첨부
+            </p>
             <p className="composer-caption">
               PDF 1개 · 10MB(10,000,000바이트) · 20쪽 이하. 암호 PDF는 지원하지
               않습니다. 스캔 PDF의 본문 인식은 이 접수 단계에서 확인하지

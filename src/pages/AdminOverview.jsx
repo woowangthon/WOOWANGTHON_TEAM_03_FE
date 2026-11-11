@@ -9,6 +9,9 @@ import {
   recentPeriod,
   routeLabels,
   validatePeriod,
+  warningLabel,
+  failureLabel,
+  failureStageLabel,
 } from "../api/admin.js";
 import { requestStateLabel, requestStateLabels } from "../api/requests.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
@@ -21,7 +24,7 @@ const count = (value) =>
   value == null ? "미확정" : `${value.toLocaleString()}건`;
 const warningText = (record) =>
   record.warning_codes.length
-    ? record.warning_codes.join(", ")
+    ? record.warning_codes.map(warningLabel).join(" ")
     : record.inspection_status === "complete"
       ? "경고 없음"
       : "경고 미확정";
@@ -287,13 +290,11 @@ function AuditDetail({ id, close, onForbidden }) {
             </p>
             <p>
               <b>실패 단계·코드</b>
-              {data.failure.stage || "미기록"} · {data.failure.code || "미기록"}
+              {failureStageLabel(data.failure.stage)} ·{" "}
+              {failureLabel(data.failure.code)}
             </p>
           </div>
-          <p className="fine-print">
-            {data.warning_codes.length ? "경고 코드 " : ""}
-            {warningText(data)}
-          </p>
+          <p className="fine-print">{warningText(data)}</p>
           {!data.detection_is_final && (
             <Notice kind="warning">
               검사가 완료되지 않았습니다. 저장된 탐지 구간이 있어도 확정 결과가
@@ -633,7 +634,7 @@ export default function AdminOverview() {
           })}
           {field("inspection_status", "검사 상태", inspectionLabels)}
           {field("inspection_anomaly", "검사 이상", {
-            true: "이상 · 축소 검사 또는 실패",
+            true: "이상 · 불완전 검사 또는 실패",
             false: "정상 · 검사 완료",
           })}
         </div>
@@ -793,10 +794,10 @@ export default function AdminOverview() {
                             .join(", ")}
                         </small>
                       </td>
-                      <td>
+                      <td className="audit-diagnostics">
                         {warningText(row)}
                         <br />
-                        {row.error_code || ""}
+                        {row.error_code ? failureLabel(row.error_code) : ""}
                       </td>
                       <td>
                         <button

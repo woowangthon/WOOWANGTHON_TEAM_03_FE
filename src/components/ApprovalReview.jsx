@@ -175,7 +175,8 @@ export default function ApprovalReview({ id, disabled, onDecision, onDenied }) {
         </ul>
       ) : (
         <p className="fine-print">
-          탐지된 구간이 없어도 외부 전송에는 승인이 필요합니다.
+          탐지된 마스킹 대상이 없어 검사 원문을 가리지 않고 외부 AI로
+          전송합니다. 전송하려면 승인이 필요합니다.
         </p>
       )}
       <div className="button-row approval-actions">
