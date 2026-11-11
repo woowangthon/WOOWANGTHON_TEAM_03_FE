@@ -63,7 +63,6 @@ export default function Account() {
   }
   return (
     <div className="page-content narrow">
-      <span className="eyebrow">ACCOUNT</span>
       <h1>내 계정</h1>
       <p className="muted">계정 정보와 로그인 설정을 확인하세요.</p>
       <Notice kind="error">{error}</Notice>

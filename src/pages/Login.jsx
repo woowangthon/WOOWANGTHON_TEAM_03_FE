@@ -34,7 +34,6 @@ export default function Login() {
       <div className="login-story">
         <Brand />
         <div>
-          <span className="eyebrow">YOUR WORK, PROTECTED.</span>
           <h1>
             좋은 생각에 집중하세요.
             <br />
@@ -52,7 +51,6 @@ export default function Login() {
         </div>
       </div>
       <section className="login-form">
-        <span className="eyebrow">AI WORKSPACE</span>
         <h2>
           {authMode === "mock" ? "동료를 만나보세요" : "다시 만나 반가워요"}
         </h2>

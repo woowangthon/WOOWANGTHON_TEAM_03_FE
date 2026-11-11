@@ -193,7 +193,6 @@ export default function Admin() {
   }, [tab, q, status, page, refreshKey]);
   return (
     <div className="page-content">
-      <span className="eyebrow">SECURITY DESK</span>
       <h1>보안 현황</h1>
       <p className="muted">요청의 흐름을 확인하고 사용자 계정을 관리하세요.</p>
       <div className="tabs">

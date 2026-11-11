@@ -506,7 +506,6 @@ input[type="checkbox"] {
   padding: 48px 56px;
 }
 .login-story h1 {
-  margin-top: 8px;
   font: var(--md-sys-typescale-display-small);
 }
 .login-story p {
@@ -534,9 +533,6 @@ input[type="checkbox"] {
   font: var(--md-sys-typescale-headline-small);
 }
 .login-form h2 + .muted {
-  margin-top: 4px;
-}
-.login-form .eyebrow + h2 {
   margin-top: 4px;
 }
 .demo-label {
@@ -1409,7 +1405,6 @@ input:disabled + .attach-button {
 .page-content > * + * {
   margin-top: 24px;
 }
-.page-content > .eyebrow + h1,
 .page-content > h1 + .muted {
   margin-top: 4px;
 }
