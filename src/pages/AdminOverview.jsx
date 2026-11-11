@@ -316,7 +316,11 @@ function AuditDetail({ id, close, onForbidden }) {
                 {data.document.size_bytes ?? "미확인"}바이트 ·{" "}
                 {status(data.document.extraction_status)}
               </p>
-              <button onClick={loadPdf} disabled={busy || pdfBusy}>
+              <button
+                className="secondary"
+                onClick={loadPdf}
+                disabled={busy || pdfBusy}
+              >
                 {pdfBusy ? "PDF 읽는 중…" : "감사용 PDF 열기"}
               </button>
               {pdf && (
@@ -554,6 +558,7 @@ export default function AdminOverview() {
           확인한 뒤 다시 조회해 주세요.
         </Notice>
         <button
+          className="secondary"
           onClick={() => {
             setForbidden(false);
             setVersion((v) => v + 1);
@@ -671,7 +676,11 @@ export default function AdminOverview() {
             {busy ? " · 갱신 중…" : ""}
           </p>
         </div>
-        <button disabled={busy} onClick={() => setVersion((v) => v + 1)}>
+        <button
+          className="secondary"
+          disabled={busy}
+          onClick={() => setVersion((v) => v + 1)}
+        >
           새로고침
         </button>
       </div>
@@ -791,6 +800,7 @@ export default function AdminOverview() {
                       </td>
                       <td>
                         <button
+                          className="text-button"
                           aria-label={`${row.request_id} 상세 보기`}
                           onClick={() => setSelected(row.request_id)}
                         >

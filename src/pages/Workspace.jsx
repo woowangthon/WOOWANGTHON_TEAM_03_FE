@@ -9,6 +9,7 @@ import {
   validateInstruction,
 } from "../domain/requests.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
+import Icon from "../components/Icon.jsx";
 import MarkdownAnswer from "../components/MarkdownAnswer.jsx";
 
 export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
@@ -145,9 +146,6 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
       <div className="conversation">
         {!selectedId ? (
           <section className="welcome">
-            <span className="welcome-mark" aria-hidden="true">
-              ✳
-            </span>
             <span className="eyebrow">함께 일하는 안전한 AI</span>
             <h1>
               오늘은 어떤 일을
@@ -165,7 +163,7 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                   화면 흐름 체험 <span>가상 예시 · 실제 AI 호출 없음</span>
                 </div>
                 <div className="scenario-grid">
-                  {scenarios.slice(0, 3).map((s, i) => (
+                  {scenarios.slice(0, 3).map((s) => (
                     <button
                       key={s.id}
                       className="scenario-card"
@@ -176,10 +174,9 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                         input.current?.focus();
                       }}
                     >
-                      <span className="card-number">0{i + 1}</span>
                       <strong>{s.title}</strong>
                       <span>{s.subtitle}</span>
-                      <span className="card-arrow">↗</span>
+                      <Icon name="arrow_outward" className="card-arrow" />
                     </button>
                   ))}
                 </div>
@@ -332,21 +329,22 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
               setText("");
             }}
           >
-            ＋ 새 요청 작성
+            <Icon name="add" /> 새 요청 작성
           </button>
         ) : (
           <form className="composer" onSubmit={submit}>
             {file && (
               <div className="file-chip">
                 <span>
-                  ▤ {file.name} <small>추출 연결 준비 중</small>
+                  <Icon name="picture_as_pdf" /> {file.name}{" "}
+                  <small>추출 연결 준비 중</small>
                 </span>
                 <button
                   type="button"
                   aria-label="첨부 제거"
                   onClick={() => setFile(null)}
                 >
-                  ×
+                  <Icon name="close" />
                 </button>
               </div>
             )}
@@ -370,7 +368,7 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                 onChange={attach}
               />
               <label className="attach-button" htmlFor="pdf">
-                ＋ <span>PDF 첨부</span>
+                <Icon name="attach_file" /> <span>PDF 첨부</span>
               </label>
               {requestMode === "mock" && (
                 <select
@@ -400,7 +398,7 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                 }
                 aria-label="검사 시작"
               >
-                {busy ? "…" : "↑"}
+                {busy ? "…" : <Icon name="arrow_upward" />}
               </button>
             </div>
           </form>

@@ -92,3 +92,18 @@ test("mobile layout stays within viewport", async ({ page }) => {
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await expect(page.getByRole("link", { name: "내 계정" })).toBeVisible();
 });
+test("narrow window drawer stays hidden until opened and closes from its scrim", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "직원으로 체험하기" }).click();
+  const account = page.getByRole("link", { name: "내 계정" });
+  await expect(account).toBeHidden();
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
+  await expect(account).toBeVisible();
+  // The open drawer covers the left side; click the scrim strip beside it.
+  await page.locator(".scrim").click({ position: { x: 375, y: 400 } });
+  await expect(account).toBeHidden();
+  await expect(page.locator(".scrim")).toHaveCount(0);
+});

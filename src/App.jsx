@@ -12,6 +12,7 @@ import { useAuth } from "./auth/AuthContext.jsx";
 import { authMode, requestApi, requestMode } from "./api/services.js";
 import { stateLabels } from "./domain/requests.js";
 import { Brand, Notice, Spinner } from "./components/Common.jsx";
+import Icon from "./components/Icon.jsx";
 import Login from "./pages/Login.jsx";
 import Workspace from "./pages/Workspace.jsx";
 import IntakeWorkspace from "./pages/IntakeWorkspace.jsx";
@@ -109,26 +110,34 @@ function Shell() {
   }
   return (
     <div className="app-shell">
+      {/* Shown only while the drawer is modal (narrow windows); see styles.css. */}
+      {menuOpen && (
+        <div
+          className="scrim"
+          aria-hidden="true"
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
       <aside className={`sidebar ${menuOpen ? "open" : ""}`}>
         <Brand />
         {isEmployee && (
           <button className="new-request" onClick={() => select(null)}>
-            <span>＋</span> 새 요청
+            <Icon name="add" /> 새 요청
           </button>
         )}
         <nav className="main-nav">
           {isEmployee && (
             <NavLink to="/" end onClick={() => setMenuOpen(false)}>
-              ◈ <span>AI 작업 공간</span>
+              <Icon name="chat" /> <span>AI 작업 공간</span>
             </NavLink>
           )}
           {isAdmin && (
             <NavLink to="/admin" onClick={() => setMenuOpen(false)}>
-              ▦ <span>보안 현황</span>
+              <Icon name="monitoring" /> <span>보안 현황</span>
             </NavLink>
           )}
           <NavLink to="/account" onClick={() => setMenuOpen(false)}>
-            ○ <span>내 계정</span>
+            <Icon name="account_circle" /> <span>내 계정</span>
           </NavLink>
         </nav>
         {isEmployee && (
@@ -142,7 +151,10 @@ function Shell() {
               ) : historyError ? (
                 <div>
                   <p className="fine-print">{historyError}</p>
-                  <button onClick={() => setHistoryVersion((v) => v + 1)}>
+                  <button
+                    className="text-button"
+                    onClick={() => setHistoryVersion((v) => v + 1)}
+                  >
                     목록 다시 조회
                   </button>
                 </div>
@@ -192,7 +204,7 @@ function Shell() {
         )}
         <div className="sidebar-footer">
           <div className="privacy-card">
-            <span>◇</span>
+            <Icon name="verified_user" />
             <p>
               {isAdmin ? "관리와 AI 이용을 구분해요" : "전송 전, 한 번 더 확인"}
               <br />
@@ -233,7 +245,7 @@ function Shell() {
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen(!menuOpen)}
           >
-            ☰
+            <Icon name="menu" />
           </button>
           <span>{isAdmin ? "보안 관리" : "나의 안전한 AI 작업 공간"}</span>
           <div className="connection-status">
