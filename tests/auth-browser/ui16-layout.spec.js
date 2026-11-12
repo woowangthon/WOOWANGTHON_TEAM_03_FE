@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { admin, employee, installAuthFixture } from "./auth-fixture.js";
 import { installAudit } from "./admin-fixture.js";
-import { auditId, auditUser } from "../fixtures/admin.js";
+import { auditId, auditRow, auditUser } from "../fixtures/admin.js";
+import { openAccountPopup, openFilters } from "../helpers/ui.js";
 
 test("audit detail survives direct entry and reload, then returns to the filtered list", async ({
   page,
@@ -17,6 +18,7 @@ test("audit detail survives direct entry and reload, then returns to the filtere
   await expect(detail).toBeVisible();
   await page.getByRole("button", { name: "뒤로가기", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/audit\?q=.*page=2/);
+  await openFilters(page);
   await expect(
     page.getByLabel("이용자·파일명 검색", { exact: true }),
   ).toHaveValue("감사");
@@ -54,6 +56,32 @@ test("returning from a reloaded audit detail restores the list scroll position",
   page,
 }) => {
   await installAudit(page);
+  await page.route(
+    (url) => url.pathname === "/api/v1/admin/requests/",
+    async (route) =>
+      route.fulfill({
+        json: {
+          count: 20,
+          page: 1,
+          page_size: 20,
+          total_pages: 1,
+          next_page: null,
+          previous_page: null,
+          results: Array.from({ length: 20 }, (_, index) =>
+            auditRow({
+              request_id:
+                index === 19
+                  ? auditId
+                  : `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, "0")}`,
+              user:
+                index === 19
+                  ? auditUser
+                  : { ...auditUser, full_name: `가상 직원 ${index + 1}` },
+            }),
+          ),
+        },
+      }),
+  );
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/admin/audit");
   const button = page.getByRole("button", {
@@ -111,12 +139,13 @@ for (const [scale, width, height] of [
     });
     await expect(detail).toBeVisible();
     await detail.scrollIntoViewIfNeeded();
-    const top = await detail.getByText("상세", { exact: true }).boundingBox();
-    const bottom = await detail
-      .getByText("보기", { exact: true })
-      .boundingBox();
-    expect(bottom.y).toBeGreaterThanOrEqual(top.y + top.height);
+    await expect(detail.locator("svg")).toBeVisible();
+    await expect(detail).toHaveText("");
+    const detailBounds = await detail.boundingBox();
+    expect(detailBounds.width).toBeGreaterThanOrEqual(40);
+    expect(detailBounds.height).toBeGreaterThanOrEqual(40);
     await withinPage();
+    await openFilters(page);
     const select = page.getByRole("combobox", {
       name: "검사 상태",
       exact: true,
@@ -148,10 +177,8 @@ for (const [scale, width, height] of [
       path: testInfo.outputPath(`employee-${scale}.png`),
       fullPage: true,
     });
-    if (width < 840)
-      await page.getByRole("button", { name: "메뉴 열기" }).click();
-    await page.getByRole("button", { name: "계정 메뉴", exact: true }).click();
-    const account = page.getByRole("menuitem", {
+    const popup = await openAccountPopup(page);
+    const account = popup.getByRole("button", {
       name: "계정 설정",
       exact: true,
     });
@@ -174,6 +201,7 @@ test("login visual review on desktop and mobile", async ({
   for (const width of [1366, 390]) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/");
+    await expect(page.locator(".brand")).toContainText("Mask Assistant");
     await expect(page.getByLabel("비밀번호", { exact: true })).toBeVisible();
     expect(
       await page.evaluate(

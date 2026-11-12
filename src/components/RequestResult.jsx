@@ -10,13 +10,20 @@ const outcomes = {
   failed: "요청 처리를 완료하지 못했습니다.",
 };
 
-export default function RequestResult({ state, answer, disabled, children }) {
+export default function RequestResult({
+  state,
+  answer,
+  disabled,
+  children,
+  failureDetail,
+}) {
   const [copyResult, setCopyResult] = useState("");
 
   if (state !== "completed")
     return (
       <Notice kind={state === "failed" ? "error" : "warning"}>
-        {outcomes[state]} 다시 진행하려면 새 요청을 작성해 주세요.
+        {state === "failed" && failureDetail ? failureDetail : outcomes[state]}{" "}
+        다시 진행하려면 새 요청을 작성해 주세요.
       </Notice>
     );
 

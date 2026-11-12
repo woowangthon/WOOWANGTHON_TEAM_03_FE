@@ -1,5 +1,5 @@
 import { describeApiError } from "../api/http.js";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { authApi, authMode } from "../api/services.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { Notice } from "../components/Common.jsx";
@@ -11,6 +11,15 @@ export default function Account() {
   const [name, setName] = useState(auth.user.full_name);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const passwordAlert = useRef(null);
+  useEffect(() => {
+    if (passwordError)
+      passwordAlert.current?.scrollIntoView({
+        block: "nearest",
+        behavior: "instant",
+      });
+  }, [passwordError]);
   const [message, setMessage] = useState("");
   async function saveName(event) {
     event.preventDefault();
@@ -45,11 +54,11 @@ export default function Account() {
     const form = event.currentTarget;
     const values = new FormData(form);
     if (values.get("new") !== values.get("confirm")) {
-      setError("새 비밀번호 확인 값이 일치하지 않습니다.");
+      setPasswordError("새 비밀번호 확인 값이 일치하지 않습니다.");
       return;
     }
     setBusy(true);
-    setError("");
+    setPasswordError("");
     setMessage("");
     try {
       await auth.run(() =>
@@ -58,7 +67,7 @@ export default function Account() {
       form.reset();
       auth.clearSession();
     } catch (error) {
-      setError(describeApiError(error));
+      setPasswordError(describeApiError(error));
     } finally {
       setBusy(false);
     }
@@ -99,8 +108,14 @@ export default function Account() {
           </button>
         </form>
       </section>
-      <section className="panel">
-        <h2>비밀번호 변경</h2>
+      <section className="panel password-panel">
+        <div ref={passwordAlert}>
+          <Notice kind="error">{passwordError}</Notice>
+        </div>
+        <div className="panel-title">
+          <h2>비밀번호 변경</h2>
+          <PasswordRules id="account-password-rules" />
+        </div>
         {authMode === "mock" ? (
           <Notice>
             체험에서는 비밀번호를 수집하거나 변경하지 않습니다. 실제 인증 연결
@@ -132,7 +147,6 @@ export default function Account() {
               maxLength={30}
               autoComplete="new-password"
             />
-            <PasswordRules id="account-password-rules" />
             <button className="primary" disabled={busy}>
               비밀번호 변경 후 로그아웃
             </button>

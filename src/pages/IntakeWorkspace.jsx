@@ -27,7 +27,12 @@ const processingMessages = {
   processing: "답변을 처리하고 있습니다.",
 };
 
-function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
+function RequestDetail({
+  id,
+  onHistoryChange,
+  onHistoryHidden,
+  submissionOutcome = null,
+}) {
   const auth = useAuth();
   const status = useRequestStatus(auth, id, onHistoryChange);
   const { data, loading } = status;
@@ -36,7 +41,7 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
   const setData = (next) => (next ? status.accept(next) : status.clear());
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(submissionOutcome?.error || "");
   const [message, setMessage] = useState("");
   const [starting, setStarting] = useState(false);
   const [confirmHide, setConfirmHide] = useState(false);
@@ -47,6 +52,16 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
   const alive = useRef(true);
   const fileUrl = useRef(null);
   const instructionDirty = useRef(false);
+  const observedSubmission = useRef(submissionOutcome);
+
+  useEffect(() => {
+    // A history row may be opened while its original submit is still starting.
+    if (submissionOutcome && submissionOutcome !== observedSubmission.current) {
+      observedSubmission.current = submissionOutcome;
+      setError(submissionOutcome.error || "");
+      status.refresh();
+    }
+  }, [submissionOutcome]);
 
   useEffect(() => {
     alive.current = true;
@@ -88,12 +103,12 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
     setMessage("");
     try {
       const next = await auth.run(() => requestApi.start(auth.user, id));
+      onHistoryChange();
       if (!alive.current) return;
       status.accept(next);
       setMessage(
         "검사를 시작했습니다. 외부 전송이 필요한 경우 별도 승인을 받습니다.",
       );
-      onHistoryChange();
       status.refresh();
     } catch (err) {
       if (!alive.current) return;
@@ -178,13 +193,40 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
       const next = await auth.run(() =>
         requestApi.updateInstruction(auth.user, id, instruction),
       );
+      onHistoryChange();
       if (!alive.current) return;
       setData(next);
       setInstruction(next.instruction);
       instructionDirty.current = false;
-      setMessage(
-        "같은 의뢰에 요청문을 저장했습니다. AI 처리는 시작하지 않았습니다.",
-      );
+      setMessage("요청문을 저장했습니다.");
+      if (
+        next.state === "preparing" &&
+        next.processing_available &&
+        next.instruction.trim()
+      ) {
+        setStarting(true);
+        try {
+          const started = await auth.run(() => requestApi.start(auth.user, id));
+          onHistoryChange();
+          if (!alive.current) return;
+          status.accept(started);
+          setMessage("");
+          status.refresh();
+        } catch (startError) {
+          onHistoryChange();
+          if (!alive.current) return;
+          setError(describeApiError(startError));
+          if (
+            ["refresh", "unavailable"].includes(processingRecovery(startError))
+          )
+            status.clear();
+          setMessage(
+            "시작 요청은 다시 보내지 않습니다. 상태 다시 조회로 결과를 확인해 주세요.",
+          );
+        } finally {
+          if (alive.current) setStarting(false);
+        }
+      }
       onHistoryChange();
     } catch (err) {
       if (alive.current) {
@@ -303,8 +345,6 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
     >
       {!completed && (
         <div className="response-heading">
-          <span className="avatar-small">마</span>
-          <strong>의뢰 상세</strong>
           {data && (
             <span className={`state-tag ${data.state}`}>
               {requestStateLabel(data.state)}
@@ -313,7 +353,7 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
         </div>
       )}
       {loading && <Spinner>접수한 의뢰를 불러오는 중</Spinner>}
-      <Notice kind="error">{error}</Notice>
+      <Notice kind="error">{data?.state !== "failed" && error}</Notice>
       <Notice kind="error">{status.error}</Notice>
       {!completed && <Notice>{message}</Notice>}
       {!loading && !completed && (
@@ -323,15 +363,9 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
       )}
       {data && (
         <>
-          {!completed && (
-            <p className="fine-print request-id">접수 번호 {data.id}</p>
-          )}
-          {(!completed || showContext) && (
-            <div className="request-bubble">
-              <span className="eyebrow">접수한 요청문</span>
-              <p>{data.instruction || "요청문을 아직 추가하지 않았습니다."}</p>
-            </div>
-          )}
+          <div className="request-bubble">
+            <p>{data.instruction || "요청문을 아직 추가하지 않았습니다."}</p>
+          </div>
           {data.state === "preparing" && (
             <Notice>
               접수한 내용을 확인한 뒤 검사를 시작해 주세요. PDF만 접수했다면
@@ -472,12 +506,18 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
               key={data.state}
               state={data.state}
               answer={data.answer_text}
+              failureDetail={error}
               disabled={busy || loading}
             >
               {completed && (
                 <AnswerOptions
                   disabled={busy || loading}
-                  onContext={() => setShowContext((value) => !value)}
+                  onContext={
+                    data.document
+                      ? () => setShowContext((value) => !value)
+                      : undefined
+                  }
+                  contextVisible={showContext}
                   onRefresh={refreshStatus}
                   onHide={() => setConfirmHide(true)}
                 />
@@ -556,6 +596,7 @@ export default function IntakeWorkspace({
   const setAttempt = (attempt) =>
     setDraft((current) => ({ ...current, attempt }));
   const [busy, setBusy] = useState(false);
+  const [submissionOutcome, setSubmissionOutcome] = useState(null);
   const [error, setError] = useState("");
   const submitting = useRef(false);
   const composing = useRef(false);
@@ -596,12 +637,28 @@ export default function IntakeWorkspace({
       const result = await auth.run(() =>
         requestApi.create(auth.user, submission),
       );
+      onHistoryChange();
       if (!mounted.current) return;
       setAttempt(null);
       setText("");
       setFile(null);
-      if (!selection.current) onSelect(result.id);
+      setSubmissionOutcome(null);
+      let startErrorMessage = "";
+      if (
+        result.state === "preparing" &&
+        result.processing_available &&
+        result.instruction.trim()
+      ) {
+        try {
+          await auth.run(() => requestApi.start(auth.user, result.id));
+        } catch (startError) {
+          startErrorMessage = describeApiError(startError);
+        }
+      }
       onHistoryChange();
+      if (!mounted.current) return;
+      setSubmissionOutcome({ id: result.id, error: startErrorMessage });
+      if (!selection.current) onSelect(result.id);
     } catch (err) {
       if (mounted.current) {
         setError(describeApiError(err));
@@ -684,6 +741,9 @@ export default function IntakeWorkspace({
           <RequestDetail
             key={selectedId}
             id={selectedId}
+            submissionOutcome={
+              submissionOutcome?.id === selectedId ? submissionOutcome : null
+            }
             onHistoryChange={onHistoryChange}
             onHistoryHidden={onHistoryHidden}
           />
@@ -695,15 +755,8 @@ export default function IntakeWorkspace({
           </section>
         )}
       </div>
-      <div className="composer-wrap">
-        {selectedId ? (
-          <button
-            className="secondary new-bottom"
-            onClick={() => onSelect(null)}
-          >
-            <Icon name="add" /> 새 요청 작성
-          </button>
-        ) : (
+      {!selectedId && (
+        <div className="composer-wrap">
           <>
             <Notice kind="error">{error}</Notice>
             {attempt && !busy && (
@@ -772,10 +825,9 @@ export default function IntakeWorkspace({
                   </button>
                 </div>
               )}
-              <label className="sr-only" htmlFor="intake-instruction">
-                요청 내용
-              </label>
-              <textarea
+              <TextField
+                multiline
+                label="요청 내용"
                 id="intake-instruction"
                 rows={3}
                 value={text}
@@ -830,8 +882,8 @@ export default function IntakeWorkspace({
               <p>PDF 1개 · 최대 10MB · 20쪽. 암호 PDF는 지원하지 않습니다.</p>
             </details>
           </>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

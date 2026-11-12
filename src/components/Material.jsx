@@ -9,6 +9,16 @@ import {
 import { createPortal } from "react-dom";
 import Icon from "./Icon.jsx";
 
+function FieldOutline({ label }) {
+  return (
+    <fieldset className="md-outline" aria-hidden="true">
+      <legend>
+        <span>{label || " "}</span>
+      </legend>
+    </fieldset>
+  );
+}
+
 export function TextField({
   label,
   leadingIcon,
@@ -28,12 +38,17 @@ export function TextField({
     <div
       className={`md-field ${error ? "md-error" : ""} ${props.disabled ? "md-disabled" : ""} ${className}`}
     >
-      <div className="md-field-control">
+      <div
+        className="md-field-control"
+        data-placeholder={Boolean(props.placeholder) || undefined}
+      >
+        <FieldOutline label={label} />
         {leadingIcon && <Icon name={leadingIcon} />}
         <div className="md-field-body">
           {label && <label htmlFor={inputId}>{label}</label>}
           <Control
             {...props}
+            placeholder={props.placeholder || " "}
             id={inputId}
             aria-invalid={error ? true : props["aria-invalid"]}
             aria-describedby={
@@ -283,6 +298,7 @@ export function Select({
           setOpen(!open);
         }}
       >
+        <FieldOutline label={label} />
         <span className="md-select-text">
           {label && <span className="md-field-label">{label}</span>}
           <span>{options[selected]?.label || "선택"}</span>

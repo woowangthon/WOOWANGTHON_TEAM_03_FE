@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { installAuthFixture, employee, admin } from "./auth-fixture.js";
+import { openAccount } from "../helpers/ui.js";
 import {
   inputText,
   previewFixture,
@@ -15,6 +16,7 @@ async function setup(page, initial = "preparing") {
     reads: 0,
     patches: [],
     hold: null,
+    holdStart: null,
     loseStart: false,
     failStart: false,
     readError: null,
@@ -116,6 +118,7 @@ async function setup(page, initial = "preparing") {
       state.starts++;
       expect(request.headers()["x-csrftoken"]).toBe(auth.csrf);
       expect(request.postDataJSON()).toEqual({});
+      if (state.holdStart) await state.holdStart;
       state.row.processing_available = false;
       state.row.state = state.failStart ? "failed" : "queued";
       if (state.failStart) return fail("PDF_NO_TEXT", 400);
@@ -158,14 +161,21 @@ async function setup(page, initial = "preparing") {
 }
 const statusTag = (page) => page.locator(".intake-detail .state-tag");
 
-test("completed view shows only the answer and tools, while more options preserve recovery", async ({
+test("completed view keeps the question above the answer and tools, while more options preserve recovery", async ({
   page,
 }, testInfo) => {
   const { state } = await setup(page, "completed");
   const detail = page.locator(".intake-detail");
+  await expect(detail.locator(".response-heading, .request-id")).toHaveCount(0);
+  const question = detail.locator(".request-bubble");
+  await expect(question).toHaveText(state.row.instruction);
+  const questionBox = await question.boundingBox();
+  const answerBox = await detail.locator(".markdown-answer").boundingBox();
+  expect(questionBox.y + questionBox.height).toBeLessThanOrEqual(answerBox.y);
   await expect(
-    detail.locator(".response-heading, .request-id, .request-bubble"),
+    page.getByRole("button", { name: "새 요청 작성", exact: true }),
   ).toHaveCount(0);
+  await expect(page.locator(".composer-wrap")).toHaveCount(0);
   await expect(
     detail.getByRole("heading", { name: "서버에 저장된 답변" }),
   ).toHaveCount(0);
@@ -181,11 +191,9 @@ test("completed view shows only the answer and tools, while more options preserv
   });
   const more = page.getByLabel("답변 더보기", { exact: true });
   await more.click();
-  await page
-    .getByRole("button", { name: "요청 정보 보기", exact: true })
-    .click();
-  await expect(detail.locator(".request-bubble")).toBeVisible();
-  await more.click();
+  await expect(
+    page.getByRole("button", { name: "첨부파일 보기", exact: true }),
+  ).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(more).toBeFocused();
   await expect(
@@ -288,8 +296,11 @@ test("approval countdown continues beyond five minutes and an approval starts a 
 test("wait limit aborts an outstanding read and ignores its late result until a manual read", async ({
   page,
 }) => {
-  const { state } = await setup(page, "processing");
+  const { state } = await setup(page, "analyzing");
+  state.row.state = "processing";
   await page.clock.fastForward(297000);
+  // Wait for this GET to commit and schedule its next poll before advancing time.
+  await expect(statusTag(page)).toHaveText("처리 중");
   await expect(
     page.getByText("상태 확인을 시작한 뒤 4분 57초가 지났습니다."),
   ).toBeVisible();
@@ -531,7 +542,7 @@ for (const [stateName, label, message] of [
     await expect(
       page.getByRole("button", { name: "답변 복사", exact: true }),
     ).toHaveCount(0);
-    await page.getByRole("button", { name: /새 요청 작성/ }).click();
+    await page.getByRole("button", { name: "새 요청", exact: true }).click();
     await expect(page.getByLabel("요청 내용", { exact: true })).toBeVisible();
     expect(state.starts).toBe(0);
   });
@@ -550,7 +561,17 @@ test("hide confirms intent, refreshes history, closes detail and revokes its PDF
   await page.reload();
   await page.getByLabel("답변 더보기", { exact: true }).click();
   await page
-    .getByRole("button", { name: "요청 정보 보기", exact: true })
+    .getByRole("button", { name: "첨부파일 보기", exact: true })
+    .click();
+  await expect(page.locator(".document-card")).toBeVisible();
+  await page.getByLabel("답변 더보기", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "첨부파일 숨기기", exact: true })
+    .click();
+  await expect(page.locator(".document-card")).toHaveCount(0);
+  await page.getByLabel("답변 더보기", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "첨부파일 보기", exact: true })
     .click();
   await page
     .getByRole("button", { name: "PDF 원본 보기", exact: true })
@@ -633,7 +654,7 @@ test("hide during approval closes the preview and refreshes history after naviga
   state.holdHide = new Promise((resolve) => (release = resolve));
   await confirmHideButton(page).click();
   await expect.poll(() => state.hides.length).toBe(1);
-  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
+  await openAccount(page);
   release();
   await expect(page.locator(".history-title")).toHaveText("최근 요청 0");
   await expect(page).toHaveURL(/\/account$/);
@@ -654,7 +675,7 @@ test("hide permission denial clears the detail without claiming success", async 
     page.getByText("내 요청 목록에서 숨겼습니다.", { exact: true }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "내 계정 설정", exact: true }),
+    page.getByRole("button", { name: "내 계정 메뉴", exact: true }),
   ).toBeVisible();
   expect(state.hidden).toBe(false);
 });
@@ -809,10 +830,15 @@ test("preview access denial clears the request detail and prevents decisions", a
   expect(state.decisions).toEqual([]);
 });
 
-test("saved instruction gates start; one start and sequential polling stop at completion", async ({
+test("history lookup never starts work; saving an instruction starts once and polling stops at completion", async ({
   page,
 }) => {
   const { state } = await setup(page);
+  await page.clock.fastForward(10000);
+  expect(state.starts).toBe(0);
+  await page.reload();
+  await expect(page.getByLabel("요청문 수정", { exact: true })).toBeVisible();
+  expect(state.starts).toBe(0);
   await page
     .getByLabel("요청문 수정", { exact: true })
     .fill("새 가상 요청문 😀");
@@ -820,10 +846,6 @@ test("saved instruction gates start; one start and sequential polling stop at co
     page.getByRole("button", { name: "검사 시작", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "요청문 저장", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "검사 시작", exact: true }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "검사 시작", exact: true }).dblclick();
   await expect(statusTag(page)).toHaveText("처리 대기");
   expect(state.starts).toBe(1);
   expect(state.patches).toEqual([{ instruction: "새 가상 요청문 😀" }]);
@@ -843,7 +865,7 @@ test("saved instruction gates start; one start and sequential polling stop at co
   expect(state.reads).toBe(reads);
 });
 
-test("PDF-only record requires saving an instruction before start", async ({
+test("PDF-only record waits for an instruction and starts automatically after saving it", async ({
   page,
 }) => {
   const { state } = await setup(page);
@@ -862,14 +884,74 @@ test("PDF-only record requires saving an instruction before start", async ({
   await expect(
     page.getByRole("button", { name: "검사 시작", exact: true }),
   ).toBeDisabled();
+  expect(state.starts).toBe(0);
   await page
     .getByLabel("이 의뢰에 요청문 추가", { exact: true })
     .fill("PDF 검증 요청");
   await page.getByRole("button", { name: "요청문 저장", exact: true }).click();
-  await page.getByRole("button", { name: "검사 시작", exact: true }).click();
   await expect(statusTag(page)).toHaveText("처리 대기");
   expect(state.starts).toBe(1);
 });
+
+for (const scenario of [
+  {
+    name: "successful start",
+    loseStart: false,
+    failStart: false,
+    label: "처리 대기",
+  },
+  {
+    name: "lost start response",
+    loseStart: true,
+    failStart: false,
+    label: "처리 대기",
+  },
+  {
+    name: "extraction failure",
+    loseStart: false,
+    failStart: true,
+    label: "처리 실패",
+  },
+]) {
+  test(`saving an instruction updates history after navigation during ${scenario.name}`, async ({
+    page,
+  }) => {
+    const { state } = await setup(page);
+    state.loseStart = scenario.loseStart;
+    state.failStart = scenario.failStart;
+    if (scenario.failStart)
+      state.row.document = {
+        original_filename: "synthetic.pdf",
+        size_bytes: 100,
+        page_count: 1,
+        extraction_status: "pending",
+      };
+    let release;
+    state.holdStart = new Promise((resolve) => {
+      release = resolve;
+    });
+    const prompt = "이동 중에도 보존할 새 요청문";
+    await page.getByLabel("요청문 수정", { exact: true }).fill(prompt);
+    await page
+      .getByRole("button", { name: "요청문 저장", exact: true })
+      .click();
+    await expect.poll(() => state.starts).toBe(1);
+    await expect(page.locator(".history-list")).toContainText(prompt);
+    await openAccount(page);
+    await expect(page).toHaveURL(/\/account$/);
+    release();
+    await expect(
+      page.locator(".history-list").getByRole("button", {
+        name: `${prompt} ${scenario.label}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/account$/);
+    await expect(page.locator(".intake-detail")).toHaveCount(0);
+    expect(state.patches).toEqual([{ instruction: prompt }]);
+    expect(state.starts).toBe(1);
+  });
+}
 
 test("pending read does not overlap; navigation discards late response and stops reads", async ({
   page,
@@ -882,7 +964,7 @@ test("pending read does not overlap; navigation discards late response and stops
   await expect.poll(() => state.reads).toBe(before + 1);
   await page.clock.fastForward(6000);
   expect(state.reads).toBe(before + 1);
-  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
+  await openAccount(page);
   state.hold = null;
   release();
   await page.clock.fastForward(10000);

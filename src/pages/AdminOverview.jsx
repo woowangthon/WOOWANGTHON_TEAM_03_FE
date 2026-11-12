@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { adminApi, requestApi, requestMode } from "../api/services.js";
@@ -17,6 +24,7 @@ import {
 import { requestStateLabel, requestStateLabels } from "../api/requests.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
 import { DateField, Select, TextField } from "../components/Material.jsx";
+import Icon from "../components/Icon.jsx";
 import { useAdminBack, useAdminScroll } from "./AdminNavigation.js";
 
 const time = (value) =>
@@ -69,6 +77,11 @@ function MetricValue({ metric }) {
 
 function DailyChart({ data }) {
   const descriptionId = useId();
+  const chart = useRef(null);
+  const dates = data.map((day) => day.date).join(",");
+  useLayoutEffect(() => {
+    if (chart.current) chart.current.scrollLeft = chart.current.scrollWidth;
+  }, [dates]);
   const [key, setKey] = useState("total_requests");
   const label = adminMetrics.find(([id]) => id === key)[1];
   const max = Math.max(1, ...data.map((day) => day.metrics[key].known_value));
@@ -105,6 +118,7 @@ function DailyChart({ data }) {
           .join(". ")}
       </p>
       <div
+        ref={chart}
         className="audit-chart"
         role="img"
         aria-label={`${label} 일별 추이`}
@@ -573,6 +587,8 @@ function queryParams(query) {
 }
 
 function AuditFilters({ query, onApply }) {
+  const [expanded, setExpanded] = useState(false);
+  const filterId = useId();
   const [draft, setDraft] = useState(query.filters);
   const [validation, setValidation] = useState("");
   useEffect(() => {
@@ -598,9 +614,19 @@ function AuditFilters({ query, onApply }) {
     </Select>
   );
   return (
-    <form className="panel audit-filters" onSubmit={apply}>
+    <section className="audit-filter-section">
       <div className="panel-title">
-        <h2>조회 조건</h2>
+        <button
+          type="button"
+          className="icon-button filter-toggle"
+          aria-label="조회 조건"
+          title="조회 조건"
+          aria-expanded={expanded}
+          aria-controls={filterId}
+          onClick={() => setExpanded(!expanded)}
+        >
+          <Icon name="filter_list" />
+        </button>
         <div className="period-presets" role="group" aria-label="조회 기간">
           {[1, 7, 30].map((days) => {
             const period = recentPeriod(days);
@@ -625,52 +651,56 @@ function AuditFilters({ query, onApply }) {
           })}
         </div>
       </div>
-      <div className="audit-filter-grid">
-        <DateField
-          label="시작일"
-          required
-          value={draft.date_from}
-          onChange={change("date_from")}
-        />
-        <DateField
-          label="종료일"
-          required
-          value={draft.date_to}
-          onChange={change("date_to")}
-        />
-        <TextField
-          className="audit-search"
-          label="이용자·파일명 검색"
-          maxLength={100}
-          placeholder="로그인 ID, 이름 또는 파일명"
-          value={draft.q}
-          onChange={change("q")}
-        />
-        {field("state", "요청 상태", requestStateLabels)}
-        {field("processing_route", "처리 경로", routeLabels)}
-        {field("detection_label", "탐지 분류", detectionLabels)}
-        {field("has_warnings", "경고 여부", {
-          true: "있음",
-          false: "없음 · 검사 완료",
-        })}
-        {field("inspection_status", "검사 상태", inspectionLabels)}
-        {field("inspection_anomaly", "검사 이상", {
-          true: "이상 · 불완전 검사 또는 실패",
-          false: "정상 · 검사 완료",
-        })}
-      </div>
-      <details>
-        <summary>사용자 번호로 검색</summary>
-        <TextField
-          label="사용자 번호"
-          placeholder="UUID 전체 입력"
-          value={draft.user_id}
-          onChange={change("user_id")}
-        />
-      </details>
-      <Notice kind="error">{validation}</Notice>
-      <button className="primary">조건 적용</button>
-    </form>
+      {expanded && (
+        <form id={filterId} className="panel audit-filters" onSubmit={apply}>
+          <div className="audit-filter-grid">
+            <DateField
+              label="시작일"
+              required
+              value={draft.date_from}
+              onChange={change("date_from")}
+            />
+            <DateField
+              label="종료일"
+              required
+              value={draft.date_to}
+              onChange={change("date_to")}
+            />
+            <TextField
+              className="audit-search"
+              label="이용자·파일명 검색"
+              maxLength={100}
+              placeholder="로그인 ID, 이름 또는 파일명"
+              value={draft.q}
+              onChange={change("q")}
+            />
+            {field("state", "요청 상태", requestStateLabels)}
+            {field("processing_route", "처리 경로", routeLabels)}
+            {field("detection_label", "탐지 분류", detectionLabels)}
+            {field("has_warnings", "경고 여부", {
+              true: "있음",
+              false: "없음 · 검사 완료",
+            })}
+            {field("inspection_status", "검사 상태", inspectionLabels)}
+            {field("inspection_anomaly", "검사 이상", {
+              true: "이상 · 불완전 검사 또는 실패",
+              false: "정상 · 검사 완료",
+            })}
+          </div>
+          <details>
+            <summary>사용자 번호로 검색</summary>
+            <TextField
+              label="사용자 번호"
+              placeholder="UUID 전체 입력"
+              value={draft.user_id}
+              onChange={change("user_id")}
+            />
+          </details>
+          <Notice kind="error">{validation}</Notice>
+          <button className="primary">조건 적용</button>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -925,7 +955,7 @@ export default function AdminOverview({ view = "dashboard" }) {
                         </td>
                         <td>
                           <button
-                            className="text-button audit-detail-button"
+                            className="icon-button audit-detail-button"
                             aria-label={`${row.user.full_name} 요청 상세 보기`}
                             onClick={() => {
                               saveScroll();
@@ -935,8 +965,7 @@ export default function AdminOverview({ view = "dashboard" }) {
                               );
                             }}
                           >
-                            <span>상세</span>
-                            <span>보기</span>
+                            <Icon name="search" />
                           </button>
                         </td>
                       </tr>
@@ -953,21 +982,27 @@ export default function AdminOverview({ view = "dashboard" }) {
             <div className="pagination">
               <span>전체 {data.count}건</span>
               <button
+                className="icon-button"
+                aria-label="이전"
+                title="이전"
                 disabled={busy || !data.previous_page}
                 onClick={() =>
                   updateQuery({ ...query, page: data.previous_page })
                 }
               >
-                이전
+                <Icon name="chevron_left" />
               </button>
               <span>
                 {data.page} / {data.total_pages}페이지
               </span>
               <button
+                className="icon-button"
+                aria-label="다음"
+                title="다음"
                 disabled={busy || !data.next_page}
                 onClick={() => updateQuery({ ...query, page: data.next_page })}
               >
-                다음
+                <Icon name="chevron_right" />
               </button>
             </div>
           )}

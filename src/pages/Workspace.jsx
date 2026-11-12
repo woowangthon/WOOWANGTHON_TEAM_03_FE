@@ -10,7 +10,7 @@ import {
 } from "../domain/requests.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
 import Icon from "../components/Icon.jsx";
-import { Select } from "../components/Material.jsx";
+import { Select, TextField } from "../components/Material.jsx";
 import RequestResult from "../components/RequestResult.jsx";
 
 export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
@@ -177,12 +177,10 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
           <Spinner>요청을 불러오는 중</Spinner>
         ) : (
           <>
-            {request.state !== "completed" && (
-              <div className="request-bubble">
-                <span className="eyebrow">내 요청</span>
-                <p>{request.instruction}</p>
-              </div>
-            )}
+            <div className="request-bubble">
+              <span className="eyebrow">내 요청</span>
+              <p>{request.instruction}</p>
+            </div>
             <section
               className={`response-card${request.state === "completed" ? " completed-answer" : ""}`}
             >
@@ -295,22 +293,10 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
             </section>
           </>
         )}
-        <Notice kind="error">{error}</Notice>
       </div>
-      <div className="composer-wrap">
-        {selectedId ? (
-          <button
-            className="secondary new-bottom"
-            onClick={() => {
-              onSelect(null);
-              setRequest(null);
-              setFile(null);
-              setText("");
-            }}
-          >
-            <Icon name="add" /> 새 요청 작성
-          </button>
-        ) : (
+      <Notice kind="error">{error}</Notice>
+      {!selectedId && (
+        <div className="composer-wrap">
           <form className="composer" onSubmit={submit}>
             {file && (
               <div className="file-chip">
@@ -327,10 +313,9 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                 </button>
               </div>
             )}
-            <label className="sr-only" htmlFor="instruction">
-              요청 내용
-            </label>
-            <textarea
+            <TextField
+              multiline
+              label="요청 내용"
               ref={input}
               id="instruction"
               value={text}
@@ -386,8 +371,8 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
               </button>
             </div>
           </form>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

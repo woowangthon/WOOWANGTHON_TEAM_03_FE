@@ -211,52 +211,38 @@ function Shell() {
             {historyPaging && historyPaging.total_pages > 1 && (
               <div className="history-pages">
                 <button
+                  aria-label="이전 요청"
+                  title="이전 요청"
                   disabled={historyLoading || !historyPaging.previous_page}
                   onClick={() => setHistoryPage(historyPaging.previous_page)}
                 >
-                  이전 요청
+                  <Icon name="chevron_left" />
                 </button>
                 <span>
                   {historyPaging.page} / {historyPaging.total_pages}
                 </span>
                 <button
+                  aria-label="다음 요청"
+                  title="다음 요청"
                   disabled={historyLoading || !historyPaging.next_page}
                   onClick={() => setHistoryPage(historyPaging.next_page)}
                 >
-                  다음 요청
+                  <Icon name="chevron_right" />
                 </button>
               </div>
             )}
           </>
         )}
         <div className="sidebar-footer">
-          <button
-            className="profile-link"
-            aria-label="내 계정 설정"
-            onClick={() => {
-              navigate("/account");
-              setMenuOpen(false);
-            }}
-          >
-            <span className="profile-avatar">
-              {auth.user.full_name.slice(0, 1)}
-            </span>
-            <span>
-              <strong>{auth.user.full_name}</strong>
-              <small>
-                {auth.user.role === "admin" ? "보안 관리자" : "일반 사용자"}
-              </small>
-            </span>
-          </button>
           <AccountMenu
+            user={auth.user}
+            loggingOut={loggingOut}
+            onLogout={logout}
             onAccount={() => {
               navigate("/account");
               setMenuOpen(false);
             }}
           />
-          <button className="logout" disabled={loggingOut} onClick={logout}>
-            {loggingOut ? "로그아웃 중…" : "로그아웃"}
-          </button>
         </div>
       </aside>
       <div className="main-area" inert={modalOpen}>
