@@ -2,7 +2,7 @@ import Icon from "./Icon.jsx";
 
 const noticeIcons = { info: "info", warning: "warning", error: "error" };
 
-export function Brand() {
+export function Brand({ name = "마스킹 어시스턴트" }) {
   return (
     <div className="brand">
       <span className="brand-symbol" aria-hidden="true">
@@ -22,7 +22,7 @@ export function Brand() {
           />
         </svg>
       </span>
-      <span className="brand-name">마스킹 어시스턴트</span>
+      <span className="brand-name">{name}</span>
     </div>
   );
 }

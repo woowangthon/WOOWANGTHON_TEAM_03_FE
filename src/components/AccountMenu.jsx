@@ -1,24 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Icon from "./Icon.jsx";
+import { useOverlay } from "./Material.jsx";
 
-export default function AccountMenu({ onAccount }) {
+export default function AccountMenu({ user, onAccount, onLogout, loggingOut }) {
   const [open, setOpen] = useState(false);
-  const container = useRef(null);
   const trigger = useRef(null);
-  const item = useRef(null);
+  const panel = useRef(null);
+  const id = useId();
+  const position = useOverlay(open, trigger, panel, () => setOpen(false), 288);
+  const role = user.role === "admin" ? "보안 관리자" : "일반 사용자";
   useEffect(() => {
-    if (!open) return;
-    item.current?.focus();
-    const outside = (event) => {
-      if (!container.current?.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
-  }, [open]);
+    if (open && position.visibility === "visible")
+      panel.current?.querySelector("button")?.focus();
+  }, [open, position.visibility]);
+  function choose(action) {
+    setOpen(false);
+    action();
+  }
   return (
     <div
       className="account-menu"
-      ref={container}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
@@ -29,47 +30,50 @@ export default function AccountMenu({ onAccount }) {
           setOpen(false);
           trigger.current?.focus();
         }
-        if (open && event.key === "Tab") {
-          setOpen(false);
-          trigger.current?.focus();
-        }
       }}
     >
       <button
         type="button"
         ref={trigger}
-        className="icon-button account-menu-trigger"
-        title="계정 설정"
-        aria-label="계정 메뉴"
-        aria-haspopup="menu"
+        className="profile-link"
+        aria-label="내 계정 메뉴"
+        aria-haspopup="dialog"
         aria-expanded={open}
+        aria-controls={open ? id : undefined}
         onClick={() => setOpen(!open)}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
       >
-        <Icon name="more_vert" />
+        <span className="profile-avatar">{user.full_name.slice(0, 1)}</span>
+        <span className="profile-name">
+          <strong>{user.full_name}</strong>
+          <small>{role}</small>
+        </span>
+        <Icon name="expand_more" />
       </button>
       {open && (
         <div
-          className="md-menu account-menu-panel"
-          role="menu"
-          aria-label="본인 계정"
+          ref={panel}
+          id={id}
+          className="md-menu profile-popup"
+          role="dialog"
+          aria-label="계정 정보"
+          style={position}
         >
-          <button
-            type="button"
-            ref={item}
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              onAccount();
-            }}
-          >
+          <div className="profile-summary">
+            <strong>{user.full_name}</strong>
+            <span>{user.username}</span>
+            <small>{role}</small>
+          </div>
+          <button type="button" onClick={() => choose(onAccount)}>
             <Icon name="account_circle" />
             계정 설정
+          </button>
+          <button
+            type="button"
+            disabled={loggingOut}
+            onClick={() => choose(onLogout)}
+          >
+            <Icon name="arrow_outward" />
+            {loggingOut ? "로그아웃 중…" : "로그아웃"}
           </button>
         </div>
       )}

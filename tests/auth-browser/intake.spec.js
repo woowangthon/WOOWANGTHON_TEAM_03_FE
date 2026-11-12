@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { installAuthFixture, employee } from "./auth-fixture.js";
+import { openAccount } from "../helpers/ui.js";
 
 const pdfFixture = {
   name: "synthetic.pdf",
@@ -15,7 +16,7 @@ function record(instruction = "", document = null) {
     state: "preparing",
     created_at: "2026-11-10T00:00:00Z",
     updated_at: "2026-11-10T00:00:00Z",
-    processing_available: false,
+    processing_available: Boolean(instruction.trim()),
     document,
     answer_text: null,
     finished_at: null,
@@ -28,8 +29,12 @@ async function setup(page) {
     posts: [],
     patches: [],
     gets: [],
+    starts: [],
+    detailReads: 0,
     losePost: false,
     losePatch: false,
+    loseStart: false,
+    failStart: false,
     pdfError: false,
     deny: false,
     keyConflict: false,
@@ -136,7 +141,32 @@ async function setup(page) {
         contentType: "application/pdf",
         body: pdfFixture.buffer,
       });
-    if (method === "GET") return reply(200, { request: row });
+    if (method === "GET") {
+      state.detailReads++;
+      return reply(200, { request: row });
+    }
+    if (method === "POST" && url.pathname.endsWith("/start/")) {
+      expect(req.postDataJSON()).toEqual({});
+      state.starts.push({
+        id: row.request_id,
+        instruction: row.instruction,
+        extractionStatus: row.document?.extraction_status ?? null,
+      });
+      if (state.holdStart) await state.holdStart;
+      if (row.state !== "preparing")
+        return fail(409, "PROCESSING_ALREADY_STARTED");
+      if (!row.instruction.trim()) return fail(400, "INSTRUCTION_REQUIRED");
+      row.processing_available = false;
+      row.state = state.failStart ? "failed" : "queued";
+      if (row.document)
+        row.document.extraction_status = state.failStart ? "failed" : "ready";
+      if (state.failStart) return fail(400, "PDF_NO_TEXT");
+      if (state.loseStart) {
+        state.loseStart = false;
+        return route.abort("failed");
+      }
+      return reply(202, { request: row });
+    }
     if (method === "PATCH") {
       const body = req.postDataJSON();
       state.patches.push(body);
@@ -146,6 +176,7 @@ async function setup(page) {
         return route.abort("failed");
       }
       row.instruction = body.instruction;
+      row.processing_available = Boolean(body.instruction.trim());
       return reply(200, { request: row });
     }
     throw new Error(`Unexpected business operation ${method} ${url.pathname}`);
@@ -204,6 +235,247 @@ test("PDF drop highlights the composer and Enter submits the exact PDF and promp
     name: "drag.pdf",
     text: pdfFixture.buffer.toString(),
   });
+  expect(state.starts).toEqual([
+    {
+      id,
+      instruction: prompt.replace(/\n/g, "\r\n"),
+      extractionStatus: "pending",
+    },
+  ]);
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 대기",
+  );
+});
+
+test("text intake starts once automatically and repeated Enter cannot submit during start", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  let release;
+  state.holdStart = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.goto("/");
+  const input = page.getByLabel("요청 내용", { exact: true });
+  await input.fill("  자동 시작할 가상 요청 😀  ");
+  await input.press("Enter");
+  await expect.poll(() => state.starts.length).toBe(1);
+  await expect(input).toBeDisabled();
+  await input.dispatchEvent("keydown", { key: "Enter", keyCode: 13 });
+  await input.dispatchEvent("keydown", {
+    key: "Enter",
+    keyCode: 13,
+    repeat: true,
+  });
+  expect(state.posts).toHaveLength(1);
+  expect(state.starts).toEqual([
+    {
+      id,
+      instruction: "  자동 시작할 가상 요청 😀  ",
+      extractionStatus: null,
+    },
+  ]);
+  release();
+  await expect(page).toHaveURL(new RegExp(id));
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 대기",
+  );
+  await expect(page.locator(".request-bubble")).toHaveText(
+    "자동 시작할 가상 요청 😀",
+  );
+  await expect(
+    page.getByRole("button", { name: "검사 시작", exact: true }),
+  ).toHaveCount(0);
+  expect(state.starts).toHaveLength(1);
+});
+
+test("new receipt and latest state remain in history when the account screen opens during automatic start", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  let release;
+  state.holdStart = new Promise((resolve) => {
+    release = resolve;
+  });
+  const prompt = "새 접수 후 화면 이동 시험";
+  await page.goto("/");
+  await page.getByLabel("요청 내용", { exact: true }).fill(prompt);
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
+  await expect.poll(() => state.starts.length).toBe(1);
+  await expect(page.locator(".history-title")).toHaveText("최근 요청 1");
+  await expect(page.locator(".history-list")).toContainText(prompt);
+  await openAccount(page);
+  release();
+  await expect(
+    page.locator(".history-list").getByRole("button", {
+      name: `${prompt} 처리 대기`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/account$/);
+  expect(state.posts).toHaveLength(1);
+  expect(state.starts).toHaveLength(1);
+});
+
+for (const scenario of [
+  {
+    name: "successful start",
+    loseStart: false,
+    failStart: false,
+    label: "처리 대기",
+    error: null,
+  },
+  {
+    name: "lost start response",
+    loseStart: true,
+    failStart: false,
+    label: "처리 대기",
+    error: "서버 응답을 확인하지 못했습니다",
+  },
+  {
+    name: "extraction failure",
+    loseStart: false,
+    failStart: true,
+    label: "처리 실패",
+    error: "PDF_NO_TEXT",
+  },
+]) {
+  test(`opening the newly created history row during ${scenario.name} reconciles the visible detail`, async ({
+    page,
+  }) => {
+    const { state } = await setup(page);
+    state.loseStart = scenario.loseStart;
+    state.failStart = scenario.failStart;
+    let release;
+    state.holdStart = new Promise((resolve) => {
+      release = resolve;
+    });
+    const prompt = "시작 대기 중 상세 열기 시험";
+    await page.goto("/");
+    await page.getByLabel("요청 내용", { exact: true }).fill(prompt);
+    if (scenario.failStart)
+      await page.locator("#intake-pdf").setInputFiles(pdfFixture);
+    await page.getByRole("button", { name: "요청 접수", exact: true }).click();
+    await expect.poll(() => state.starts.length).toBe(1);
+    await page
+      .locator(".history-list")
+      .getByRole("button", {
+        name: `${prompt} 접수 완료 · 준비 중`,
+        exact: true,
+      })
+      .click();
+    await expect(page.locator(".request-bubble")).toHaveText(prompt);
+    await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+      "접수 완료 · 준비 중",
+    );
+    release();
+    await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+      scenario.label,
+    );
+    if (scenario.error)
+      await expect(page.getByRole("alert")).toContainText(scenario.error);
+    expect(state.posts).toHaveLength(1);
+    expect(state.starts).toHaveLength(1);
+  });
+}
+
+test("replaying a lost intake already started elsewhere only opens its current state", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  state.losePost = true;
+  await page.goto("/");
+  await page
+    .getByLabel("요청 내용", { exact: true })
+    .fill("이미 접수된 가상 요청");
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "서버 응답을 확인하지 못했습니다",
+  );
+  expect(state.starts).toHaveLength(0);
+  // Another tab may start the saved receipt before this tab confirms its intake.
+  state.rows[0].state = "queued";
+  state.rows[0].processing_available = false;
+  await page
+    .getByRole("button", { name: "같은 접수 번호로 확인", exact: true })
+    .click();
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 대기",
+  );
+  expect(state.posts).toHaveLength(2);
+  expect(state.posts[0]).toEqual(state.posts[1]);
+  expect(state.rows).toHaveLength(1);
+  expect(state.starts).toHaveLength(0);
+  await page.reload();
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 대기",
+  );
+  expect(state.starts).toHaveLength(0);
+  expect(state.posts).toHaveLength(2);
+});
+
+test("lost automatic start response reconciles by GET without creating or starting again on reload", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  state.loseStart = true;
+  await page.clock.install();
+  await page.goto("/");
+  await page
+    .getByLabel("요청 내용", { exact: true })
+    .fill("시작 응답 유실 시험");
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(id));
+  await expect(page.getByRole("alert")).toContainText(
+    "서버 응답을 확인하지 못했습니다",
+  );
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 대기",
+  );
+  expect(state.detailReads).toBeGreaterThan(0);
+  await page.clock.fastForward(10000);
+  expect(state.posts).toHaveLength(1);
+  expect(state.starts).toHaveLength(1);
+  await page.reload();
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 대기",
+  );
+  expect(state.posts).toHaveLength(1);
+  expect(state.starts).toHaveLength(1);
+});
+
+test("PDF extraction failure after automatic start retains the receipt and never retries the mutation", async ({
+  page,
+}) => {
+  const { state } = await setup(page);
+  state.failStart = true;
+  await page.goto("/");
+  await page
+    .getByLabel("요청 내용", { exact: true })
+    .fill("PDF 추출 실패 시험");
+  await page.locator("#intake-pdf").setInputFiles(pdfFixture);
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(id));
+  await expect(page.getByRole("alert")).toContainText("PDF_NO_TEXT");
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 실패",
+  );
+  await page
+    .getByRole("button", { name: "상태 다시 조회", exact: true })
+    .click();
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 실패",
+  );
+  await page.reload();
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 실패",
+  );
+  expect(state.posts).toHaveLength(1);
+  expect(state.starts).toHaveLength(1);
+  expect(state.rows).toHaveLength(1);
+  await page.getByRole("button", { name: "새 요청", exact: true }).click();
+  await expect(page.getByLabel("요청 내용", { exact: true })).toHaveValue("");
+  expect(state.posts).toHaveLength(1);
 });
 
 test("invalid and multiple drops preserve the current file, while a valid PDF replaces it", async ({
@@ -277,6 +549,7 @@ test("Shift Enter creates a newline and Korean composition Enter never submits",
   await expect(page).toHaveURL(new RegExp(id));
   expect(state.posts).toHaveLength(1);
   expect(state.posts[0].instruction).toBe("첫 줄\nsecond");
+  expect(state.starts).toHaveLength(1);
 });
 
 test("pending intake blocks more Enter events and drops and lost receipt keeps the original bytes", async ({
@@ -321,9 +594,10 @@ test("pending intake blocks more Enter events and drops and lost receipt keeps t
   expect(state.posts).toHaveLength(2);
   expect(state.posts[0]).toEqual(state.posts[1]);
   expect(state.rows).toHaveLength(1);
+  expect(state.starts).toHaveLength(1);
 });
 
-test("PDF-first intake adds instruction to the same request and reload never creates a request", async ({
+test("PDF-first intake waits for its instruction, then starts once without creating another request on reload", async ({
   page,
 }) => {
   const { state } = await setup(page);
@@ -335,20 +609,26 @@ test("PDF-first intake adds instruction to the same request and reload never cre
     page.getByText("접수 완료 · 준비 중", { exact: true }).last(),
   ).toBeVisible();
   await expect(page.getByText(/추출 대기/)).toBeVisible();
+  expect(state.starts).toHaveLength(0);
   await page
     .getByLabel("이 의뢰에 요청문 추가", { exact: true })
     .fill("  요청문\n😀 공백 보존  ");
   await page.getByRole("button", { name: "요청문 저장", exact: true }).click();
-  await expect(
-    page.getByText(
-      "같은 의뢰에 요청문을 저장했습니다. AI 처리는 시작하지 않았습니다.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 대기",
+  );
+  expect(state.starts).toEqual([
+    {
+      id,
+      instruction: "  요청문\n😀 공백 보존  ",
+      extractionStatus: "pending",
+    },
+  ]);
   await page.reload();
-  await expect(page.getByLabel("요청문 수정", { exact: true })).toHaveValue(
+  await expect(page.locator(".request-bubble p")).toHaveText(
     "  요청문\n😀 공백 보존  ",
   );
+  await expect(page.getByLabel("요청문 수정", { exact: true })).toHaveCount(0);
   await page
     .getByRole("button", { name: "PDF 원본 보기", exact: true })
     .click();
@@ -360,6 +640,7 @@ test("PDF-first intake adds instruction to the same request and reload never cre
   expect(state.posts[0].file.text).toBe(pdfFixture.buffer.toString());
   expect(state.patches).toHaveLength(1);
   expect(state.rows).toHaveLength(1);
+  expect(state.starts).toHaveLength(1);
   await expect(page.getByRole("button", { name: "가리고 보내기" })).toHaveCount(
     0,
   );
@@ -385,7 +666,7 @@ test("lost receipt keeps immutable payload/key across account-screen navigation 
   expect(state.posts).toHaveLength(1);
   expect(state.rows).toHaveLength(1);
   await expect(page.getByLabel("요청 내용", { exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
+  await openAccount(page);
   await page.goBack();
   await expect(page.getByLabel("요청 내용", { exact: true })).toHaveValue(
     "응답 유실 시험",
@@ -423,13 +704,17 @@ test("failed instruction update preserves user draft while reconciling the store
     "보존해야 할 새 초안",
   );
   await page.getByRole("button", { name: "요청문 저장", exact: true }).click();
-  await expect(
-    page.getByText(
-      "같은 의뢰에 요청문을 저장했습니다. AI 처리는 시작하지 않았습니다.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expect(page.locator(".intake-detail .state-tag")).toHaveText(
+    "처리 대기",
+  );
   expect(state.patches).toHaveLength(2);
+  expect(state.starts).toEqual([
+    {
+      id,
+      instruction: "보존해야 할 새 초안",
+      extractionStatus: null,
+    },
+  ]);
 });
 
 test("key conflict only starts a fresh key after explicit recovery and never auto-submits", async ({
@@ -515,4 +800,5 @@ test("request history pages use server pagination without re-submitting and mobi
     ),
   ).toBe(true);
   expect(state.posts).toHaveLength(0);
+  expect(state.starts).toHaveLength(0);
 });

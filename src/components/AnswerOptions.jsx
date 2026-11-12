@@ -5,6 +5,7 @@ import { useOverlay } from "./Material.jsx";
 export default function AnswerOptions({
   disabled,
   onContext,
+  contextVisible,
   onRefresh,
   onHide,
 }) {
@@ -50,13 +51,15 @@ export default function AnswerOptions({
           className="md-menu answer-options-panel"
           style={position}
         >
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => choose(onContext)}
-          >
-            요청 정보 보기
-          </button>
+          {onContext && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => choose(onContext)}
+            >
+              {contextVisible ? "첨부파일 숨기기" : "첨부파일 보기"}
+            </button>
+          )}
           <button
             type="button"
             disabled={disabled}

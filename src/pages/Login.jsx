@@ -33,7 +33,7 @@ export default function Login() {
   return (
     <main className="login-page">
       <div className="login-story">
-        <Brand />
+        <Brand name="Mask Assistant" />
         <div>
           <h1>
             좋은 생각에 집중하세요.
@@ -50,7 +50,7 @@ export default function Login() {
       <section className="login-form">
         <h2>
           {authMode === "mock"
-            ? "마스킹 어시스턴트 체험하기"
+            ? "Mask Assistant 체험하기"
             : "다시 만나 반가워요"}
         </h2>
         <p className="muted">

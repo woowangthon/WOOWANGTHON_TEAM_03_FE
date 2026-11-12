@@ -238,14 +238,11 @@ function Users() {
     };
   }, [q, status, page, refreshKey, location.search]);
 
-  function edit(user, type) {
+  function inspect(user) {
     saveScroll();
-    navigate(
-      `/admin/users/${encodeURIComponent(user.id)}/${type}${location.search}`,
-      {
-        state: { adminReturn: "/admin/users", username: user.username },
-      },
-    );
+    navigate(`/admin/users/${encodeURIComponent(user.id)}${location.search}`, {
+      state: { adminReturn: "/admin/users", username: user.username },
+    });
   }
   return (
     <>
@@ -315,26 +312,15 @@ function Users() {
                     {user.is_active ? "활성" : "비활성"}
                   </td>
                   <td>
-                    <div className="table-actions">
-                      <button
-                        disabled={authMode === "mock" || !user.is_active}
-                        onClick={() => edit(user, "name")}
-                      >
-                        이름 변경
-                      </button>
-                      <button
-                        disabled={authMode === "mock" || !user.is_active}
-                        onClick={() => edit(user, "password")}
-                      >
-                        비밀번호 재설정
-                      </button>
-                      <button
-                        disabled={authMode === "mock" || !user.is_active}
-                        onClick={() => setAction({ type: "deactivate", user })}
-                      >
-                        비활성화
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`${user.full_name} 계정 상세 보기`}
+                      title="계정 상세 보기"
+                      onClick={() => inspect(user)}
+                    >
+                      <Icon name="search" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -352,17 +338,23 @@ function Users() {
         <div className="pagination">
           <span>전체 {data.count}명</span>
           <button
+            className="icon-button"
+            aria-label="이전"
+            title="이전"
             disabled={!data.previous_page || loading}
             onClick={() => update({ page: data.previous_page })}
           >
-            이전
+            <Icon name="chevron_left" />
           </button>
           <span>{data.page}페이지</span>
           <button
+            className="icon-button"
+            aria-label="다음"
+            title="다음"
             disabled={!data.next_page || loading}
             onClick={() => update({ page: data.next_page })}
           >
-            다음
+            <Icon name="chevron_right" />
           </button>
         </div>
       )}
@@ -408,7 +400,9 @@ function UserEdit({ type }) {
   const { userId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const back = useAdminBack("/admin/users");
+  const detailPath = `/admin/users/${userId}`;
+  const fromDetail = location.state?.adminReturn === detailPath;
+  const back = useAdminBack(fromDetail ? detailPath : "/admin/users");
   const [user, setUser] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -454,15 +448,17 @@ function UserEdit({ type }) {
             standalone
             close={back}
             refresh={() =>
-              navigate(`/admin/users${location.search}`, {
-                replace: true,
-                state: {
-                  message:
-                    type === "name"
-                      ? "이름을 변경했습니다."
-                      : "비밀번호를 재설정했습니다.",
-                },
-              })
+              fromDetail
+                ? navigate(-1)
+                : navigate(`/admin/users${location.search}`, {
+                    replace: true,
+                    state: {
+                      message:
+                        type === "name"
+                          ? "이름을 변경했습니다."
+                          : "비밀번호를 재설정했습니다.",
+                    },
+                  })
             }
           />
         </>
@@ -473,6 +469,118 @@ function UserEdit({ type }) {
           </button>
           <Notice kind="error">{error}</Notice>
         </>
+      )}
+    </div>
+  );
+}
+
+function UserProfile() {
+  const auth = useAuth();
+  const { userId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const back = useAdminBack("/admin/users");
+  const [user, setUser] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [version, setVersion] = useState(0);
+  const [deactivate, setDeactivate] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    setUser(null);
+    findUser(auth, userId, location.state?.username, () => active)
+      .then((result) => {
+        if (active) {
+          setUser(result);
+          if (!result) setError("사용자를 찾을 수 없습니다.");
+        }
+      })
+      .catch((err) => {
+        if (active) setError(describeApiError(err));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [userId, version, location.state?.username]);
+  function edit(type) {
+    navigate(`/admin/users/${userId}/${type}${location.search}`, {
+      state: { adminReturn: `/admin/users/${userId}`, username: user.username },
+    });
+  }
+  return (
+    <div className="page-content detail-page user-detail-page">
+      <div className="panel-title">
+        <h1>사용자 계정 정보</h1>
+        <button type="button" className="text-button page-back" onClick={back}>
+          뒤로가기
+        </button>
+      </div>
+      <Notice kind="error">{error}</Notice>
+      {loading ? (
+        <Spinner>사용자를 확인하는 중</Spinner>
+      ) : (
+        user && (
+          <>
+            <section className="panel" aria-label="사용자 정보">
+              <dl className="user-facts">
+                <div>
+                  <dt>로그인 ID</dt>
+                  <dd>{user.username}</dd>
+                </div>
+                <div>
+                  <dt>이름</dt>
+                  <dd>{user.full_name}</dd>
+                </div>
+                <div>
+                  <dt>UUID</dt>
+                  <dd>{user.id}</dd>
+                </div>
+                <div>
+                  <dt>상태</dt>
+                  <dd>{user.is_active ? "활성" : "비활성"}</dd>
+                </div>
+              </dl>
+              <div className="button-row">
+                <button
+                  className="secondary"
+                  disabled={authMode === "mock" || !user.is_active}
+                  onClick={() => edit("name")}
+                >
+                  이름 변경
+                </button>
+                <button
+                  className="secondary"
+                  disabled={authMode === "mock" || !user.is_active}
+                  onClick={() => edit("password")}
+                >
+                  비밀번호 재설정
+                </button>
+                <button
+                  className="text-button"
+                  disabled={authMode === "mock" || !user.is_active}
+                  onClick={() => setDeactivate(true)}
+                >
+                  비활성화
+                </button>
+              </div>
+            </section>
+            {deactivate && (
+              <UserAction
+                action={{ type: "deactivate", user }}
+                close={() => setDeactivate(false)}
+                refresh={() => {
+                  setDeactivate(false);
+                  setVersion((value) => value + 1);
+                }}
+              />
+            )}
+          </>
+        )
       )}
     </div>
   );
@@ -507,6 +615,7 @@ export default function Admin() {
           </AdminHome>
         }
       />
+      <Route path="users/:userId" element={<UserProfile />} />
       <Route path="users/:userId/name" element={<UserEdit type="name" />} />
       <Route
         path="users/:userId/password"

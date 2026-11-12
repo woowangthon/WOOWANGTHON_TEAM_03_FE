@@ -1,10 +1,11 @@
 import { test, expect } from "@playwright/test";
+import { openAccount, openAccountPopup } from "../helpers/ui.js";
 
-test("service branding and employee navigation expose one request entry and the account menu", async ({
+test("service branding and employee navigation expose one request entry and one profile trigger", async ({
   page,
 }) => {
   await page.goto("/");
-  await expect(page.locator(".brand")).toContainText("마스킹 어시스턴트");
+  await expect(page.locator(".brand")).toContainText("Mask Assistant");
   await expect(
     page.getByText("검사 → 전송 확인 → 답변", { exact: true }),
   ).toHaveCount(0);
@@ -26,20 +27,28 @@ test("service branding and employee navigation expose one request entry and the 
     "내가 승인한 내용으로 일하세요.",
   ])
     await expect(page.getByText(text, { exact: true })).toHaveCount(0);
-  const trigger = page.getByRole("button", { name: "계정 메뉴", exact: true });
-  await expect(trigger).toBeVisible();
-  await trigger.click();
-  const menu = page.getByRole("menu");
-  await expect(menu).toBeVisible();
-  await menu.getByRole("menuitem", { name: /계정\s*설정/ }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(
+    page.getByRole("button", { name: "내 계정 메뉴", exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "계정 메뉴", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "로그아웃", exact: true }),
+  ).toBeHidden();
+  const popup = await openAccountPopup(page);
+  await expect(popup).toContainText("직원 체험");
+  await expect(popup).toContainText("DEMO0001");
+  await expect(popup).toContainText("일반 사용자");
+  await expect(page).toHaveURL(/\/$/);
+  await openAccount(page);
   await expect(
     page.getByRole("textbox", { name: "이름", exact: true }),
-  ).toBeVisible();
-  await expect(menu).toBeHidden();
+  ).toHaveValue("직원 체험");
+  await expect(popup).toBeHidden();
 });
 
-test("account menu Escape returns focus and its name button opens the same account screen", async ({
+test("profile popup supports keyboard settings and logout navigation, Escape, and outside dismissal", async ({
   page,
 }) => {
   await page.goto("/");
@@ -52,25 +61,40 @@ test("account menu Escape returns focus and its name button opens the same accou
     "AI 이용은 본인의 일반 계정으로 로그인하세요.",
   ])
     await expect(page.getByText(text, { exact: true })).toHaveCount(0);
-  const trigger = page.getByRole("button", { name: "계정 메뉴", exact: true });
+  const trigger = page.getByRole("button", {
+    name: "내 계정 메뉴",
+    exact: true,
+  });
+  const popup = page.getByRole("dialog", { name: "계정 정보", exact: true });
   await trigger.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("menu")).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu")).toBeHidden();
-  await expect(trigger).toBeFocused();
-  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
-  await expect(page).toHaveURL(/\/account$/);
+  await expect(popup).toBeVisible();
+  await expect(popup).toContainText("보안팀 체험");
+  await expect(popup).toContainText("DEMO0002");
+  await expect(popup).toContainText("보안 관리자");
   await expect(
-    page.getByRole("textbox", { name: "이름", exact: true }),
-  ).toBeVisible();
+    popup.getByRole("button", { name: "계정 설정", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    popup.getByRole("button", { name: "로그아웃", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(popup).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(page).toHaveURL(/\/admin$/);
+  await trigger.click();
+  await expect(popup).toBeVisible();
+  await page.getByRole("heading", { name: "보안 현황", exact: true }).click();
+  await expect(popup).toBeHidden();
+  await openAccount(page);
 });
 
 for (const viewport of [
   { width: 390, height: 844 },
   { width: 1024, height: 640 },
 ]) {
-  test(`employee composer and navigation fit ${viewport.width}px without a global horizontal overflow`, async ({
+  test(`employee composer and profile popup fit ${viewport.width}px without a global horizontal overflow`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
@@ -87,16 +111,35 @@ for (const viewport of [
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
+    const popup = await openAccountPopup(page);
+    const bounds = await popup.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
+    await expect(
+      popup.getByRole("button", { name: "로그아웃", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(popup).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: "내 계정 메뉴", exact: true }),
+    ).toBeFocused();
     if (viewport.width < 840) {
-      await page
-        .getByRole("button", { name: "메뉴 열기", exact: true })
-        .click();
       await expect(
-        page.getByRole("button", { name: "계정 메뉴", exact: true }),
+        page.getByRole("dialog", { name: "주 메뉴", exact: true }),
       ).toBeVisible();
+      await expect(page.locator(".main-area")).toHaveAttribute("inert", "");
+      await page.keyboard.press("Escape");
       await expect(
-        page.getByRole("button", { name: "로그아웃", exact: true }),
-      ).toBeVisible();
+        page.getByRole("dialog", { name: "주 메뉴", exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "메뉴 열기", exact: true }),
+      ).toBeFocused();
     }
+    await expect(input).toHaveValue(
+      "반응형 입력창 확인\n둘째 줄의 한글 요청문",
+    );
   });
 }

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { selectOption } from "../helpers/ui.js";
+import { selectOption, openAccount, logout } from "../helpers/ui.js";
 import {
   admin,
   employee,
@@ -40,7 +40,7 @@ test("real client logs in, restores its session and logs out without exposing em
   await expect(page.locator("textarea, .history-list")).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole("heading", { name: "보안 현황" })).toBeVisible();
-  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
+  await openAccount(page);
   await expect(
     page.getByRole("textbox", { name: "이름", exact: true }),
   ).toHaveValue(admin.full_name);
@@ -50,7 +50,7 @@ test("real client logs in, restores its session and logs out without exposing em
       session: Object.keys(sessionStorage),
     })),
   ).toEqual({ local: [], session: [] });
-  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await logout(page);
   await expect(
     page.getByRole("button", { name: "로그인", exact: true }),
   ).toBeVisible();
@@ -76,9 +76,22 @@ test("admin account operations use the contract and disabled users cannot be edi
   ).toBeVisible();
   await selectOption(page, "계정 상태", "비활성 계정");
   const inactive = page.getByRole("row").filter({ hasText: "USER0002" });
+  await inactive
+    .getByRole("button", { name: "비활성 직원 계정 상세 보기", exact: true })
+    .click();
+  const profile = page.getByRole("region", {
+    name: "사용자 정보",
+    exact: true,
+  });
+  await expect(profile).toContainText("USER0002");
+  await expect(profile).toContainText("33333333-3333-4333-8333-333333333333");
   await expect(
-    inactive.getByRole("button", { name: "비밀번호 재설정" }),
+    profile.getByRole("button", { name: "비밀번호 재설정", exact: true }),
   ).toBeDisabled();
+  await expect(
+    profile.getByRole("button", { name: "이름 변경", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "뒤로가기", exact: true }).click();
   await selectOption(page, "계정 상태", "활성 계정");
   await page.getByRole("button", { name: "＋ 계정 발급" }).click();
   const panel = page.locator(".action-panel");
@@ -92,15 +105,25 @@ test("admin account operations use the contract and disabled users cannot be edi
   await expect(page.getByRole("cell", { name: employee.username })).toHaveCount(
     0,
   );
-  await row.getByRole("button", { name: "이름 변경" }).click();
+  await row
+    .getByRole("button", { name: "신규 직원 계정 상세 보기", exact: true })
+    .click();
+  await expect(profile).toContainText("USER0003");
+  await expect(profile).toContainText("44444444-4444-4444-8444-444444444444");
+  await profile.getByRole("button", { name: "이름 변경", exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/users\/[^/]+\/name(?:\?|$)/);
   await expect(
     page.getByRole("button", { name: "뒤로가기", exact: true }),
   ).toBeVisible();
   await panel.getByLabel("이름", { exact: true }).fill("변경 직원");
   await panel.getByRole("button", { name: "이름 변경" }).click();
-  await expect(row.getByRole("cell", { name: "변경 직원" })).toBeVisible();
-  await row.getByRole("button", { name: "비밀번호 재설정" }).click();
+  await expect(page).toHaveURL(
+    /\/admin\/users\/44444444-4444-4444-8444-444444444444(?:\?|$)/,
+  );
+  await expect(profile).toContainText("변경 직원");
+  await profile
+    .getByRole("button", { name: "비밀번호 재설정", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/admin\/users\/[^/]+\/password(?:\?|$)/);
   await expect(
     page.getByRole("button", { name: "뒤로가기", exact: true }),
@@ -110,14 +133,24 @@ test("admin account operations use the contract and disabled users cannot be edi
     .fill("ChangedFixture9!");
   await panel.getByRole("button", { name: "비밀번호 재설정" }).click();
   await expect(panel).toHaveCount(0);
-  await row.getByRole("button", { name: "비활성화", exact: true }).click();
+  await expect(profile).toContainText("변경 직원");
+  await profile.getByRole("button", { name: "비활성화", exact: true }).click();
   await expect(panel).toContainText("재활성화는 지원하지 않습니다");
   await panel
     .getByRole("button", { name: "계정 비활성화", exact: true })
     .click();
+  await expect(
+    profile.getByRole("button", { name: "이름 변경", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "뒤로가기", exact: true }).click();
   await expect(row).toHaveCount(0);
   await selectOption(page, "계정 상태", "비활성 계정");
-  await expect(row.getByRole("button", { name: "이름 변경" })).toBeDisabled();
+  await row
+    .getByRole("button", { name: "변경 직원 계정 상세 보기", exact: true })
+    .click();
+  await expect(
+    profile.getByRole("button", { name: "이름 변경", exact: true }),
+  ).toBeDisabled();
   const id = "44444444-4444-4444-8444-444444444444";
   expect(state.calls).toEqual(
     expect.arrayContaining([
@@ -254,7 +287,7 @@ test("a delayed authentication error from a previous session cannot log out the 
   };
   await page.getByRole("button", { name: "이름 저장" }).click();
   await expect.poll(() => state.calls.includes("PATCH /auth/name/")).toBe(true);
-  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await logout(page);
   await login(page);
   await expect(page.getByRole("heading", { name: "보안 현황" })).toBeVisible();
   const finished = page.waitForResponse(
@@ -263,7 +296,7 @@ test("a delayed authentication error from a previous session cannot log out the 
   );
   release();
   await finished;
-  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
+  await openAccount(page);
   await expect(
     page.getByRole("textbox", { name: "이름", exact: true }),
   ).toHaveValue(admin.full_name);
@@ -284,4 +317,71 @@ test("an uncertain network result is shown without repeating an account mutation
     1,
   );
   await expect(page.getByRole("heading", { name: "내 계정" })).toBeVisible();
+});
+
+test("missing current password focuses its field and does not send a password mutation", async ({
+  page,
+}) => {
+  const state = await installAuthFixture(page, { signedIn: employee });
+  await page.goto("/account");
+  const panel = page.locator(".password-panel");
+  await panel
+    .getByLabel("새 비밀번호", { exact: true })
+    .fill("ChangedFixture9!");
+  await panel
+    .getByLabel("새 비밀번호 확인", { exact: true })
+    .fill("ChangedFixture9!");
+  await panel
+    .getByRole("button", { name: "비밀번호 변경 후 로그아웃", exact: true })
+    .click();
+  const current = panel.getByLabel("현재 비밀번호", { exact: true });
+  await expect(current).toBeFocused();
+  expect(await current.evaluate((input) => input.validity.valueMissing)).toBe(
+    true,
+  );
+  expect(state.calls).not.toContain("POST /auth/password/change/");
+  expect(state.current?.id).toBe(employee.id);
+});
+
+test("password mismatch and server rejection stay in the password panel and remain visible on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  const state = await installAuthFixture(page, { signedIn: employee });
+  await page.goto("/account");
+  const panel = page.locator(".password-panel");
+  await panel.getByLabel("현재 비밀번호", { exact: true }).fill(fakePassword);
+  await panel
+    .getByLabel("새 비밀번호", { exact: true })
+    .fill("ChangedFixture9!");
+  await panel
+    .getByLabel("새 비밀번호 확인", { exact: true })
+    .fill("DifferentFixture9!");
+  await panel
+    .getByRole("button", { name: "비밀번호 변경 후 로그아웃", exact: true })
+    .click();
+  const alert = panel.getByRole("alert");
+  await expect(alert).toContainText("새 비밀번호 확인 값이 일치하지 않습니다.");
+  await expect(alert).toBeInViewport({ ratio: 1 });
+  expect(state.calls).not.toContain("POST /auth/password/change/");
+  await panel
+    .getByLabel("새 비밀번호 확인", { exact: true })
+    .fill("ChangedFixture9!");
+  await panel
+    .getByLabel("현재 비밀번호", { exact: true })
+    .fill("WrongFixture9!");
+  await panel
+    .getByRole("button", { name: "비밀번호 변경 후 로그아웃", exact: true })
+    .click();
+  await expect(alert).toContainText("현재 비밀번호가 올바르지 않습니다.");
+  await expect(alert).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("alert")).toHaveCount(1);
+  await expect(panel.getByLabel("새 비밀번호", { exact: true })).toHaveValue(
+    "ChangedFixture9!",
+  );
+  expect(
+    state.calls.filter((call) => call === "POST /auth/password/change/"),
+  ).toHaveLength(1);
+  expect(state.current?.id).toBe(employee.id);
+  expect(state.unexpected).toEqual([]);
 });

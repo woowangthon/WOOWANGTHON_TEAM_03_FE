@@ -31,6 +31,9 @@ const paths = {
 
 // Compact geometry for the shared form and menu controls (24-unit grid).
 const controlPaths = {
+  search:
+    "M10 2a8 8 0 1 0 4.9 14.3L20.6 22l1.4-1.4-5.7-5.7A8 8 0 0 0 10 2Zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z",
+  filter_list: "M3 5h18v2H3V5Zm3 6h12v2H6v-2Zm4 6h4v2h-4v-2Z",
   content_copy:
     "M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z",
   more_vert:

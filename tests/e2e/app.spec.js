@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { selectOption } from "../helpers/ui.js";
+import { selectOption, openAccount, logout } from "../helpers/ui.js";
 
 test("employee approval flow clears highlights and logout clears history", async ({
   page,
@@ -15,7 +15,7 @@ test("employee approval flow clears highlights and logout clears history", async
   await page.getByRole("button", { name: "가리고 보내기" }).click();
   await expect(page.locator("mark")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "답변 복사" })).toBeVisible();
-  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await logout(page);
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
   await expect(page.getByText("첫 요청을 시작해 보세요.")).toBeVisible();
 });
@@ -71,11 +71,11 @@ test("administrator has no employee workspace, history, or direct request route"
   ).toHaveCount(0);
   await expect(page.locator(".history-list")).toHaveCount(0);
   await expect(page.locator("textarea")).toHaveCount(0);
-  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
+  await openAccount(page);
   await expect(page.getByRole("heading", { name: "내 계정" })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/\/admin$/);
-  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await logout(page);
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
   await expect(
     page.getByRole("button", { name: "새 요청", exact: true }),
@@ -93,7 +93,7 @@ test("mobile layout stays within viewport", async ({ page }) => {
   ).toBe(true);
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await expect(
-    page.getByRole("button", { name: "내 계정 설정", exact: true }),
+    page.getByRole("button", { name: "내 계정 메뉴", exact: true }),
   ).toBeVisible();
 });
 test("narrow window drawer stays hidden until opened and closes from its scrim", async ({
@@ -103,7 +103,7 @@ test("narrow window drawer stays hidden until opened and closes from its scrim",
   await page.goto("/");
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
   const account = page.getByRole("button", {
-    name: "내 계정 설정",
+    name: "내 계정 메뉴",
     exact: true,
   });
   await expect(account).toBeHidden();
@@ -134,7 +134,7 @@ for (const [role, buttonName] of [
     await expect(page.locator(".main-area")).toHaveAttribute("inert", "");
     await page.keyboard.press("Shift+Tab");
     await expect(
-      page.getByRole("button", { name: "로그아웃", exact: true }),
+      page.getByRole("button", { name: "내 계정 메뉴", exact: true }),
     ).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(close).toBeFocused();
@@ -175,7 +175,7 @@ test("drawer navigation closes the menu and restores a usable focus", async ({
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
   const trigger = page.getByRole("button", { name: "메뉴 열기" });
   await trigger.click();
-  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
+  await openAccount(page);
   await expect(
     page.getByRole("heading", { name: "내 계정", exact: true }),
   ).toBeVisible();
@@ -216,7 +216,7 @@ test("logging out from the drawer clears modal state for the next login", async 
   await page.goto("/");
   await page.getByRole("button", { name: "관리자로 체험하기" }).click();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
-  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await logout(page);
   await expect(
     page.getByRole("button", { name: "직원으로 체험하기" }),
   ).toBeVisible();

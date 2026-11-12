@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { employee, installAuthFixture } from "./auth-fixture.js";
 import { installAudit } from "./admin-fixture.js";
 import { auditId, auditUser, auditDetailFixture } from "../fixtures/admin.js";
-import { selectOption } from "../helpers/ui.js";
+import { openFilters, selectOption } from "../helpers/ui.js";
 
 const detailRegion = (page) =>
   page.getByRole("region", { name: "요청 검사 상세", exact: true });
@@ -97,6 +97,7 @@ test("audit filters and pagination use only the list API, while detail excludes 
   await expect(detail).toContainText("[[ORG_1]]");
   await expect(page.locator("body")).not.toContainText("SECRET");
   await page.getByRole("button", { name: "뒤로가기", exact: true }).click();
+  await openFilters(page);
   await page.getByLabel("이용자·파일명 검색", { exact: true }).fill("USER0001");
   await selectOption(page, "요청 상태", "정책 차단");
   await selectOption(page, "처리 경로", "외부");
@@ -142,6 +143,7 @@ test("applied inspection filters reset pagination and distinguish no warning fro
   await list.getByRole("button", { name: "다음", exact: true }).click();
   await expect(list.getByText("2 / 2페이지")).toBeVisible();
   state.totals = { list: 1, statistics: 1 };
+  await openFilters(page);
   await selectOption(page, "경고 여부", "없음 · 검사 완료");
   await selectOption(page, "검사 상태", "검사 완료");
   await selectOption(page, "검사 이상", "정상 · 검사 완료");
@@ -181,6 +183,7 @@ for (const [path, visible] of [
     await expect.poll(() => state.calls.length).toBe(original + 1);
     await page.clock.runFor(60000);
     expect(state.calls.length).toBe(original + 1);
+    await openFilters(page);
     await page
       .getByLabel("이용자·파일명 검색", { exact: true })
       .fill("최신조건");
@@ -217,7 +220,7 @@ for (const [path, visible] of [
     await expect(page.getByText(/이전 조회 자료를 닫았습니다/)).toBeVisible();
     await expect(content).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "로그아웃", exact: true }),
+      page.getByRole("button", { name: "내 계정 메뉴", exact: true }),
     ).toBeVisible();
   });
 }
@@ -236,7 +239,7 @@ test("revoked detail permission clears its sensitive data and retains the authen
   await expect(detailRegion(page)).toHaveCount(0);
   await expect(page.getByText("가상 의뢰문입니다.")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "로그아웃", exact: true }),
+    page.getByRole("button", { name: "내 계정 메뉴", exact: true }),
   ).toBeVisible();
 });
 
@@ -259,6 +262,8 @@ test("403 AUTH_REQUIRED removes protected UI and ordinary users never query any 
     "/admin/audit",
     `/admin/audit/${auditId}`,
     "/admin/users",
+    `/admin/users/${employee.id}`,
+    `/admin/users/${employee.id}/password`,
   ]) {
     await page.goto(path);
     await expect(page.getByRole("alert")).toContainText("관리자만 접근");
@@ -299,6 +304,7 @@ test("date validation and mobile audit layout stay usable", async ({
   await page.goto("/admin/audit");
   await expect(detailButton(page)).toBeVisible();
   const calls = state.calls.length;
+  await openFilters(page);
   await page.getByLabel("시작일", { exact: true }).fill("2025-01-01");
   await page.getByLabel("종료일", { exact: true }).fill("2026-11-10");
   await page.getByRole("button", { name: "조건 적용", exact: true }).click();
