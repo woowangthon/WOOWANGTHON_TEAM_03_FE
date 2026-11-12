@@ -329,7 +329,7 @@ test("PDF-first intake adds instruction to the same request and reload never cre
   const { state } = await setup(page);
   await page.goto("/");
   await page.locator("#intake-pdf").setInputFiles(pdfFixture);
-  await page.getByRole("button", { name: "의뢰 접수", exact: true }).click();
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(id));
   await expect(
     page.getByText("접수 완료 · 준비 중", { exact: true }).last(),
@@ -378,15 +378,15 @@ test("lost receipt keeps immutable payload/key across account-screen navigation 
   await page.goto("/");
   await page.getByLabel("요청 내용", { exact: true }).fill("응답 유실 시험");
   await page.locator("#intake-pdf").setInputFiles(pdfFixture);
-  await page.getByRole("button", { name: "의뢰 접수", exact: true }).click();
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
     "서버 응답을 확인하지 못했습니다",
   );
   expect(state.posts).toHaveLength(1);
   expect(state.rows).toHaveLength(1);
   await expect(page.getByLabel("요청 내용", { exact: true })).toBeDisabled();
-  await page.getByRole("link", { name: "내 계정" }).click();
-  await page.getByRole("link", { name: "AI 작업 공간" }).click();
+  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
+  await page.goBack();
   await expect(page.getByLabel("요청 내용", { exact: true })).toHaveValue(
     "응답 유실 시험",
   );
@@ -439,7 +439,7 @@ test("key conflict only starts a fresh key after explicit recovery and never aut
   state.keyConflict = true;
   await page.goto("/");
   await page.getByLabel("요청 내용", { exact: true }).fill("충돌 확인 요청");
-  await page.getByRole("button", { name: "의뢰 접수", exact: true }).click();
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("새 접수 키");
   await expect(page.getByLabel("요청 내용", { exact: true })).toBeDisabled();
   await page
@@ -448,7 +448,7 @@ test("key conflict only starts a fresh key after explicit recovery and never aut
   await expect(page.getByLabel("요청 내용", { exact: true })).toBeEnabled();
   expect(state.posts).toHaveLength(1);
   state.keyConflict = false;
-  await page.getByRole("button", { name: "의뢰 접수", exact: true }).click();
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(id));
   expect(state.posts).toHaveLength(2);
   expect(state.posts[0].client_request_key).not.toBe(
@@ -468,7 +468,7 @@ test("file limit blocks upload locally; server rejection preserves editable inpu
   expect(state.posts).toHaveLength(0);
   state.pdfError = true;
   await page.locator("#intake-pdf").setInputFiles(pdfFixture);
-  await page.getByRole("button", { name: "의뢰 접수", exact: true }).click();
+  await page.getByRole("button", { name: "요청 접수", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
     "PDF 파일을 읽을 수 없습니다",
   );

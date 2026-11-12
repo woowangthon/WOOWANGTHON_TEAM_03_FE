@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { selectOption } from "../helpers/ui.js";
 
 test("employee approval flow clears highlights and logout clears history", async ({
   page,
@@ -23,7 +24,7 @@ test("regular user cannot access admin route", async ({ page }) => {
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
   await expect(page.getByRole("alert")).toContainText("관리자만 접근");
   await expect(
-    page.getByRole("button", { name: "사용자 관리", exact: true }),
+    page.getByRole("link", { name: "사용자 관리", exact: true }),
   ).toHaveCount(0);
 });
 
@@ -48,10 +49,8 @@ test("approval expiry closes the confirmation details immediately after conflict
 test("admin can filter mock users and see empty result", async ({ page }) => {
   await page.goto("/admin");
   await page.getByRole("button", { name: "관리자로 체험하기" }).click();
-  await page.getByRole("button", { name: "사용자 관리", exact: true }).click();
-  await page
-    .getByRole("combobox", { name: "계정 상태" })
-    .selectOption("inactive");
+  await page.getByRole("link", { name: "사용자 관리", exact: true }).click();
+  await selectOption(page, "계정 상태", "비활성 계정");
   await expect(page.getByRole("cell", { name: "USER0003" })).toBeVisible();
   await page.getByPlaceholder("ID 또는 이름 검색").fill("없는계정");
   await expect(
@@ -72,13 +71,16 @@ test("administrator has no employee workspace, history, or direct request route"
   ).toHaveCount(0);
   await expect(page.locator(".history-list")).toHaveCount(0);
   await expect(page.locator("textarea")).toHaveCount(0);
-  await page.getByRole("link", { name: "내 계정" }).click();
+  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
   await expect(page.getByRole("heading", { name: "내 계정" })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/\/admin$/);
   await page.getByRole("button", { name: "로그아웃", exact: true }).click();
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
-  await expect(page.getByRole("link", { name: "AI 작업 공간" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "새 요청", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "AI 작업 공간" })).toHaveCount(0);
 });
 test("mobile layout stays within viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -90,7 +92,9 @@ test("mobile layout stays within viewport", async ({ page }) => {
     ),
   ).toBe(true);
   await page.getByRole("button", { name: "메뉴 열기" }).click();
-  await expect(page.getByRole("link", { name: "내 계정" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "내 계정 설정", exact: true }),
+  ).toBeVisible();
 });
 test("narrow window drawer stays hidden until opened and closes from its scrim", async ({
   page,
@@ -98,7 +102,10 @@ test("narrow window drawer stays hidden until opened and closes from its scrim",
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
-  const account = page.getByRole("link", { name: "내 계정" });
+  const account = page.getByRole("button", {
+    name: "내 계정 설정",
+    exact: true,
+  });
   await expect(account).toBeHidden();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await expect(account).toBeVisible();
@@ -168,7 +175,7 @@ test("drawer navigation closes the menu and restores a usable focus", async ({
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
   const trigger = page.getByRole("button", { name: "메뉴 열기" });
   await trigger.click();
-  await page.getByRole("link", { name: "내 계정", exact: true }).click();
+  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "내 계정", exact: true }),
   ).toBeVisible();

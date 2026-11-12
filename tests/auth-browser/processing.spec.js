@@ -9,6 +9,7 @@ import {
 const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 async function setup(page, initial = "preparing") {
   const auth = await installAuthFixture(page, { signedIn: employee });
+  const clockStart = Date.now();
   const state = {
     starts: 0,
     reads: 0,
@@ -32,7 +33,7 @@ async function setup(page, initial = "preparing") {
     decisionError: null,
     loseDecision: false,
     clean: false,
-    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    expiresAt: new Date(clockStart + 30 * 60 * 1000).toISOString(),
     row: {
       request_id: id,
       instruction: "가상 문서를 요약해 주세요.",
@@ -144,12 +145,80 @@ async function setup(page, initial = "preparing") {
       );
     return json({ request: snapshot });
   });
-  await page.clock.install();
+  // Keep server expiry and browser time aligned even on a busy test machine.
+  await page.clock.install({ time: clockStart - 1000 });
+  await page.clock.pauseAt(clockStart);
   await page.goto("/?request=" + id);
-  await expect(page.locator(".request-bubble")).toBeVisible();
+  await expect(
+    page.locator(
+      initial === "completed" ? ".markdown-answer" : ".request-bubble",
+    ),
+  ).toBeVisible();
   return { state, auth };
 }
 const statusTag = (page) => page.locator(".intake-detail .state-tag");
+
+test("completed view shows only the answer and tools, while more options preserve recovery", async ({
+  page,
+}, testInfo) => {
+  const { state } = await setup(page, "completed");
+  const detail = page.locator(".intake-detail");
+  await expect(
+    detail.locator(".response-heading, .request-id, .request-bubble"),
+  ).toHaveCount(0);
+  await expect(
+    detail.getByRole("heading", { name: "서버에 저장된 답변" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "상태 다시 조회", exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "목록에서 숨기기", exact: true }),
+  ).toBeHidden();
+  await page.screenshot({
+    path: testInfo.outputPath("clean-answer.png"),
+    animations: "disabled",
+  });
+  const more = page.getByLabel("답변 더보기", { exact: true });
+  await more.click();
+  await page
+    .getByRole("button", { name: "요청 정보 보기", exact: true })
+    .click();
+  await expect(detail.locator(".request-bubble")).toBeVisible();
+  await more.click();
+  await page.keyboard.press("Escape");
+  await expect(more).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "상태 다시 조회", exact: true }),
+  ).toBeHidden();
+  state.readError = "FORBIDDEN";
+  await more.click();
+  await page
+    .getByRole("button", { name: "상태 다시 조회", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText("FORBIDDEN");
+  await expect(page.locator(".markdown-answer, .request-bubble")).toHaveCount(
+    0,
+  );
+});
+
+test("completed request with missing answer keeps visible retry access", async ({
+  page,
+}) => {
+  const { state } = await setup(page, "completed");
+  state.row.answer_text = "";
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText(
+    "답변을 불러오지 못했습니다",
+  );
+  state.row.answer_text = "다시 불러온 답변";
+  await page
+    .getByRole("button", { name: "상태 다시 조회", exact: true })
+    .click();
+  await expect(page.locator(".markdown-answer")).toHaveText(
+    state.row.answer_text,
+  );
+});
 
 test("five minutes of processing pauses reads, keeps the last state and recovers by GET", async ({
   page,
@@ -179,7 +248,7 @@ test("five minutes of processing pauses reads, keeps the last state and recovers
   await page
     .getByRole("button", { name: "상태 다시 조회", exact: true })
     .click();
-  await expect(statusTag(page)).toHaveText("완료");
+  await expect(page.locator(".markdown-answer")).toBeVisible();
   await expect(
     page.getByText(/5분 동안 처리 완료를 확인하지 못해/),
   ).toHaveCount(0);
@@ -245,7 +314,7 @@ test("wait limit aborts an outstanding read and ignores its late result until a 
   await page
     .getByRole("button", { name: "상태 다시 조회", exact: true })
     .click();
-  await expect(statusTag(page)).toHaveText("완료");
+  await expect(page.locator(".markdown-answer")).toBeVisible();
 });
 
 test("combined code-point preview renders both input sources without normalizing its text", async ({
@@ -270,6 +339,11 @@ test("combined code-point preview renders both input sources without normalizing
 });
 const hideButton = (page) =>
   page.getByRole("button", { name: "목록에서 숨기기", exact: true });
+async function beginHide(page) {
+  if (await page.locator(".answer-options").count())
+    await page.getByLabel("답변 더보기", { exact: true }).click();
+  await hideButton(page).click();
+}
 const confirmHideButton = (page) =>
   page.getByRole("button", { name: "숨기기 확인", exact: true });
 
@@ -287,7 +361,7 @@ test("completed result copies only the final answer and reports clipboard failur
     });
   });
   await setup(page, "completed");
-  await expect(statusTag(page)).toHaveText("완료");
+  await expect(page.locator(".markdown-answer")).toBeVisible();
   await page.getByRole("button", { name: "답변 복사", exact: true }).click();
   expect(await page.evaluate(() => window.copiedAnswer)).toBe(
     "검증용 최종 답변\n둘째 줄",
@@ -474,16 +548,20 @@ test("hide confirms intent, refreshes history, closes detail and revokes its PDF
     extraction_status: "ready",
   };
   await page.reload();
+  await page.getByLabel("답변 더보기", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "요청 정보 보기", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "PDF 원본 보기", exact: true })
     .click();
   const frame = page.locator("iframe");
   await expect(frame).toHaveAttribute("src", /^blob:/);
   const blobUrl = await frame.getAttribute("src");
-  await hideButton(page).click();
+  await beginHide(page);
   await page.getByRole("button", { name: "돌아가기", exact: true }).click();
   expect(state.hides).toEqual([]);
-  await hideButton(page).click();
+  await beginHide(page);
   await expect(
     page.getByText(/서버 원본과 관리자 감사 기록은 보관됩니다/),
   ).toBeVisible();
@@ -524,7 +602,7 @@ test("lost hide response refreshes the list and clears details without resending
 }) => {
   const { state } = await setup(page, "completed");
   state.loseHide = true;
-  await hideButton(page).click();
+  await beginHide(page);
   await confirmHideButton(page).click();
   await expect(
     page.getByText("목록과 현재 상태를 확인한 뒤 다시 시도해 주세요.", {
@@ -545,7 +623,7 @@ test("hide during approval closes the preview and refreshes history after naviga
 }) => {
   const { state } = await setup(page, "awaiting_approval");
   await expect(page.locator(".approval-review")).toBeVisible();
-  await hideButton(page).click();
+  await beginHide(page);
   await expect(
     page.getByText(
       /숨기면 이 의뢰의 외부 전송을 승인하거나 거절할 수 없습니다/,
@@ -555,7 +633,7 @@ test("hide during approval closes the preview and refreshes history after naviga
   state.holdHide = new Promise((resolve) => (release = resolve));
   await confirmHideButton(page).click();
   await expect.poll(() => state.hides.length).toBe(1);
-  await page.getByRole("link", { name: "내 계정" }).click();
+  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
   release();
   await expect(page.locator(".history-title")).toHaveText("최근 요청 0");
   await expect(page).toHaveURL(/\/account$/);
@@ -568,14 +646,16 @@ test("hide permission denial clears the detail without claiming success", async 
 }) => {
   const { state } = await setup(page, "completed");
   state.hideError = ["FORBIDDEN", 403];
-  await hideButton(page).click();
+  await beginHide(page);
   await confirmHideButton(page).click();
   await expect(page.getByRole("alert")).toContainText("FORBIDDEN");
   await expect(page.locator(".request-bubble")).toHaveCount(0);
   await expect(
     page.getByText("내 요청 목록에서 숨겼습니다.", { exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "내 계정" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "내 계정 설정", exact: true }),
+  ).toBeVisible();
   expect(state.hidden).toBe(false);
 });
 
@@ -802,7 +882,7 @@ test("pending read does not overlap; navigation discards late response and stops
   await expect.poll(() => state.reads).toBe(before + 1);
   await page.clock.fastForward(6000);
   expect(state.reads).toBe(before + 1);
-  await page.getByRole("link", { name: "내 계정" }).click();
+  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
   state.hold = null;
   release();
   await page.clock.fastForward(10000);

@@ -7,6 +7,7 @@ import { AuthProvider } from "./auth/AuthContext.jsx";
 import "@fontsource-variable/roboto";
 import "@fontsource-variable/noto-sans-kr";
 import "./styles.css";
+import "./theme/controls.css";
 
 class ErrorBoundary extends Component {
   state = { failed: false };

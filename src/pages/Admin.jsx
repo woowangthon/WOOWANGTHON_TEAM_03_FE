@@ -1,10 +1,22 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import { describeApiError } from "../api/http.js";
-import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { authApi, authMode, requestMode } from "../api/services.js";
+import { authApi, authMode } from "../api/services.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
+import { PasswordField, Select, TextField } from "../components/Material.jsx";
 import Icon from "../components/Icon.jsx";
-import AdminOverview from "./AdminOverview.jsx";
+import PasswordRules from "../components/PasswordRules.jsx";
+import AdminOverview, { AdminAuditDetail } from "./AdminOverview.jsx";
+import { useAdminBack, useAdminScroll } from "./AdminNavigation.js";
 
 const exampleUsers = [
   {
@@ -26,28 +38,27 @@ const exampleUsers = [
     is_active: false,
   },
 ];
-const metrics = [
-  ["전체 요청", "24"],
-  ["탐지 구간", "68"],
-  ["경고 요청", "3"],
-  ["검사 이상", "1"],
-  ["정책 차단", "2"],
-  ["외부 전송 확인", "12"],
-];
+const actionLabels = {
+  create: "일반 계정 발급",
+  name: "이름 변경",
+  password: "비밀번호 재설정",
+  deactivate: "계정 비활성화",
+};
 
-function UserAction({ action, close, refresh }) {
+function UserAction({ action, close, refresh, standalone = false }) {
   const auth = useAuth();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const labels = {
-    create: "일반 계정 발급",
-    name: "이름 변경",
-    password: "비밀번호 재설정",
-    deactivate: "계정 비활성화",
-  };
+  const alive = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   async function submit(event) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || authMode === "mock") return;
     setBusy(true);
     setError("");
     const data = Object.fromEntries(new FormData(event.currentTarget));
@@ -60,20 +71,27 @@ function UserAction({ action, close, refresh }) {
           return authApi.resetPassword(action.user.id, data.new_password);
         return authApi.deactivate(action.user.id);
       });
-      refresh();
-      close();
-    } catch (error) {
-      setError(describeApiError(error));
+      if (alive.current) {
+        refresh();
+        if (!standalone) close();
+      }
+    } catch (err) {
+      if (alive.current) setError(describeApiError(err));
     } finally {
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
   }
+  const Heading = standalone ? "h1" : "h2";
   return (
     <section className="panel action-panel" aria-labelledby="action-heading">
       <div className="panel-title">
-        <h2 id="action-heading">{labels[action.type]}</h2>
-        <button className="text-button" disabled={busy} onClick={close}>
-          닫기
+        <Heading id="action-heading">{actionLabels[action.type]}</Heading>
+        <button
+          className="text-button page-back"
+          disabled={busy}
+          onClick={close}
+        >
+          {standalone ? "뒤로가기" : "닫기"}
         </button>
       </div>
       {action.user && (
@@ -84,38 +102,35 @@ function UserAction({ action, close, refresh }) {
       <Notice kind="error">{error}</Notice>
       <form onSubmit={submit}>
         {action.type === "create" && (
-          <label>
-            로그인 ID
-            <input
-              name="username"
-              required
-              pattern="[A-Z0-9]{8}"
-              title="대문자 영문 또는 숫자 8자리"
-            />
-          </label>
+          <TextField
+            label="로그인 ID"
+            name="username"
+            required
+            pattern="[A-Z0-9]{8}"
+            title="대문자 영문 또는 숫자 8자리"
+          />
         )}
         {["create", "name"].includes(action.type) && (
-          <label>
-            이름
-            <input
-              name="full_name"
-              defaultValue={action.user?.full_name || ""}
-              required
-            />
-          </label>
+          <TextField
+            label="이름"
+            name="full_name"
+            defaultValue={action.user?.full_name || ""}
+            required
+          />
         )}
         {["create", "password"].includes(action.type) && (
-          <label>
-            {action.type === "create" ? "초기 비밀번호" : "새 비밀번호"}
-            <input
-              name={action.type === "create" ? "password" : "new_password"}
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={10}
-              maxLength={30}
-            />
-          </label>
+          <PasswordField
+            label={action.type === "create" ? "초기 비밀번호" : "새 비밀번호"}
+            name={action.type === "create" ? "password" : "new_password"}
+            aria-describedby="user-password-rules"
+            autoComplete="new-password"
+            required
+            minLength={10}
+            maxLength={30}
+          />
+        )}
+        {["create", "password"].includes(action.type) && (
+          <PasswordRules id="user-password-rules" />
         )}
         {action.type === "deactivate" && (
           <Notice kind="warning">
@@ -126,39 +141,68 @@ function UserAction({ action, close, refresh }) {
         )}
         <button
           className={action.type === "deactivate" ? "danger" : "primary"}
-          disabled={busy}
+          disabled={busy || authMode === "mock"}
         >
-          {busy ? "처리 중…" : labels[action.type]}
+          {busy ? "처리 중…" : actionLabels[action.type]}
         </button>
       </form>
     </section>
   );
 }
 
-export default function Admin() {
+function AdminHome({ children, title = "보안 현황" }) {
+  return (
+    <div className="page-content">
+      <h1>{title}</h1>
+      {children}
+    </div>
+  );
+}
+
+function Users() {
   const auth = useAuth();
-  const [tab, setTab] = useState("overview");
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState("active");
-  const [page, setPage] = useState(1);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const q = params.get("q") || "";
+  const status = ["active", "inactive", "all"].includes(params.get("status"))
+    ? params.get("status")
+    : "active";
+  const requestedPage = Number(params.get("page"));
+  const page =
+    Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const [refreshKey, setRefreshKey] = useState(0);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadedSearch, setLoadedSearch] = useState(null);
   const [action, setAction] = useState(null);
+  const saveScroll = useAdminScroll(
+    !loading && loadedSearch === location.search,
+  );
+  function update(filters, replace = false) {
+    const next = { q, status, page, ...filters };
+    const search = new URLSearchParams();
+    if (next.q) search.set("q", next.q);
+    if (next.status !== "active") search.set("status", next.status);
+    if (next.page > 1) search.set("page", next.page);
+    setParams(search, { replace });
+  }
   useEffect(() => {
-    if (tab !== "users") return;
     let active = true;
     setLoading(true);
     setError("");
+    setAction(null);
+    setData(null);
+    setLoadedSearch(null);
     const timer = setTimeout(async () => {
       try {
         let result;
         if (authMode === "mock") {
           const rows = exampleUsers.filter(
-            (u) =>
-              (status === "all" || u.is_active === (status === "active")) &&
-              (u.username + " " + u.full_name)
+            (user) =>
+              (status === "all" || user.is_active === (status === "active")) &&
+              `${user.username} ${user.full_name}`
                 .toLowerCase()
                 .includes(q.trim().toLowerCase()),
           );
@@ -174,235 +218,301 @@ export default function Admin() {
             authApi.listUsers({ q: q.trim(), status, page }),
           );
         if (active) setData(result);
-      } catch (error) {
+      } catch (err) {
         if (active) {
           setData(null);
-          setError(describeApiError(error));
-          if (error.code === "PAGE_NOT_FOUND" && page > 1) setPage(1);
+          setError(describeApiError(err));
+          if (err.code === "PAGE_NOT_FOUND" && page > 1)
+            update({ page: 1 }, true);
         }
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setLoadedSearch(location.search);
+        }
       }
     }, 250);
     return () => {
       active = false;
       clearTimeout(timer);
     };
-    // Latest query wins; older responses cannot replace a new filter.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, q, status, page, refreshKey]);
+  }, [q, status, page, refreshKey, location.search]);
+
+  function edit(user, type) {
+    saveScroll();
+    navigate(
+      `/admin/users/${encodeURIComponent(user.id)}/${type}${location.search}`,
+      {
+        state: { adminReturn: "/admin/users", username: user.username },
+      },
+    );
+  }
   return (
-    <div className="page-content">
-      <h1>보안 현황</h1>
-      <p className="muted">요청의 흐름을 확인하고 사용자 계정을 관리하세요.</p>
-      <div className="tabs">
-        <button
-          className={tab === "overview" ? "active" : ""}
-          onClick={() => setTab("overview")}
+    <>
+      {authMode === "mock" && (
+        <Notice>
+          사용자 목록은 가상 예시입니다. 계정 변경은 실제 인증 연결 후 사용할 수
+          있습니다.
+        </Notice>
+      )}
+      <Notice>{location.state?.message}</Notice>
+      <div className="user-toolbar">
+        <TextField
+          className="search-label"
+          label="사용자 검색"
+          placeholder="ID 또는 이름 검색"
+          value={q}
+          maxLength={100}
+          onChange={(event) => update({ q: event.target.value, page: 1 }, true)}
+        />
+        <Select
+          label="계정 상태"
+          value={status}
+          onChange={(event) => update({ status: event.target.value, page: 1 })}
         >
-          이용 현황
-        </button>
+          <option value="active">활성 계정</option>
+          <option value="inactive">비활성 계정</option>
+          <option value="all">전체 계정</option>
+        </Select>
         <button
-          className={tab === "users" ? "active" : ""}
-          onClick={() => setTab("users")}
+          className="primary"
+          disabled={authMode === "mock"}
+          onClick={() => setAction({ type: "create" })}
         >
-          사용자 관리
+          <Icon name="add" />
+          <span className="sr-only">＋ </span>계정 발급
         </button>
       </div>
-      {tab === "overview" ? (
-        requestMode === "real" ? (
-          <AdminOverview />
-        ) : (
-          <>
-            <Notice>
-              가상 통계로 구성한 화면 예시입니다. 실제 이용 현황이나 현재 체험
-              요청의 집계가 아닙니다.
-            </Notice>
-            <div className="metrics">
-              {metrics.map(([label, value]) => (
-                <div className="metric" key={label}>
-                  <span>{label}</span>
-                  <strong>
-                    {value}
-                    <small>건</small>
-                  </strong>
-                </div>
+      <Notice kind="error">{error}</Notice>
+      {action && (
+        <UserAction
+          key={action.type + (action.user?.id || "")}
+          action={action}
+          close={() => setAction(null)}
+          refresh={() => setRefreshKey((value) => value + 1)}
+        />
+      )}
+      {loading ? (
+        <Spinner />
+      ) : data?.results.length ? (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>로그인 ID</th>
+                <th>이름</th>
+                <th>상태</th>
+                <th>계정 관리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.results.map((user) => (
+                <tr key={user.id}>
+                  <td>{user.username}</td>
+                  <td>{user.full_name}</td>
+                  <td>
+                    <span className="status-dot" />
+                    {user.is_active ? "활성" : "비활성"}
+                  </td>
+                  <td>
+                    <div className="table-actions">
+                      <button
+                        disabled={authMode === "mock" || !user.is_active}
+                        onClick={() => edit(user, "name")}
+                      >
+                        이름 변경
+                      </button>
+                      <button
+                        disabled={authMode === "mock" || !user.is_active}
+                        onClick={() => edit(user, "password")}
+                      >
+                        비밀번호 재설정
+                      </button>
+                      <button
+                        disabled={authMode === "mock" || !user.is_active}
+                        onClick={() => setAction({ type: "deactivate", user })}
+                      >
+                        비활성화
+                      </button>
+                    </div>
+                  </td>
+                </tr>
               ))}
-            </div>
-            <section className="panel">
-              <div className="panel-title">
-                <h2>최근 요청 추이</h2>
-                <span className="fine-print">가상 7일 데이터</span>
-              </div>
-              <div
-                className="bar-chart"
-                role="img"
-                aria-label="가상 7일 요청 건수: 2, 4, 3, 5, 4, 2, 4건"
-              >
-                {[2, 4, 3, 5, 4, 2, 4].map((value, i) => (
-                  <div className="bar-column" key={i}>
-                    <span>{value}</span>
-                    <div className="bar" style={{ height: value * 20 }} />
-                    <small>{i + 1}일차</small>
-                  </div>
-                ))}
-              </div>
-            </section>
-            <section className="panel">
-              <h2>최근 차단·경고</h2>
-              <div className="event-row">
-                <span className="state-tag blocked">정책 차단</span>
-                <div>
-                  <strong>거래처 정보 일괄 전송 요청</strong>
-                  <p className="muted">가상 사례 · 외부 미전송</p>
-                </div>
-              </div>
-              <div className="event-row">
-                <span className="state-tag awaiting_approval">경고</span>
-                <div>
-                  <strong>지시 삽입 의심 문구 감지</strong>
-                  <p className="muted">가상 사례 · 사용자 확인 대기</p>
-                </div>
-              </div>
-              <p className="fine-print">
-                타인의 AI 답변은 관리자 화면에 제공하지 않습니다.
-              </p>
-            </section>
-          </>
-        )
+            </tbody>
+          </table>
+        </div>
       ) : (
+        !error && (
+          <Empty title="검색 결과가 없습니다">
+            검색어나 계정 상태를 바꿔 보세요.
+          </Empty>
+        )
+      )}
+      {data && (
+        <div className="pagination">
+          <span>전체 {data.count}명</span>
+          <button
+            disabled={!data.previous_page || loading}
+            onClick={() => update({ page: data.previous_page })}
+          >
+            이전
+          </button>
+          <span>{data.page}페이지</span>
+          <button
+            disabled={!data.next_page || loading}
+            onClick={() => update({ page: data.next_page })}
+          >
+            다음
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// The API exposes paginated user lists, not a user-detail endpoint. A hint narrows
+// the search after a list click; direct URLs still resolve the exact server ID.
+async function findUser(auth, id, username, isActive) {
+  if (authMode === "mock")
+    return exampleUsers.find((user) => user.id === id) || null;
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  )
+    return null;
+  for (const q of username ? [username, ""] : [""]) {
+    const visited = new Set();
+    let page = 1;
+    while (page && isActive()) {
+      if (visited.has(page))
+        throw new Error("사용자 목록의 페이지 정보를 확인할 수 없습니다.");
+      visited.add(page);
+      const response = await auth.run(() =>
+        authApi.listUsers({ q, status: "all", page, page_size: 20 }),
+      );
+      if (!isActive()) return null;
+      if (!Array.isArray(response.results))
+        throw new Error("사용자 목록을 확인할 수 없습니다.");
+      const found = response.results.find((user) => user.id === id);
+      if (found) return found;
+      const next = response.next_page;
+      if (next != null && (!Number.isInteger(next) || next <= page))
+        throw new Error("사용자 목록의 페이지 정보를 확인할 수 없습니다.");
+      page = next;
+    }
+  }
+  return null;
+}
+
+function UserEdit({ type }) {
+  const auth = useAuth();
+  const { userId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const back = useAdminBack("/admin/users");
+  const [user, setUser] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const username = location.state?.username;
+  useAdminScroll(!loading);
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    setUser(null);
+    findUser(auth, userId, username, () => active)
+      .then((result) => {
+        if (!active) return;
+        if (!result) setError("사용자를 찾을 수 없습니다.");
+        else if (!result.is_active)
+          setError("비활성 계정은 변경할 수 없습니다.");
+        else setUser(result);
+      })
+      .catch((err) => {
+        if (active) setError(describeApiError(err));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [userId, username]);
+  return (
+    <div className="page-content detail-page">
+      {loading ? (
+        <Spinner>사용자를 확인하는 중</Spinner>
+      ) : user ? (
         <>
           {authMode === "mock" && (
             <Notice>
-              사용자 목록은 가상 예시입니다. 계정 발급·이름
-              변경·재설정·비활성화는 실제 인증 연결 후 사용할 수 있습니다.
+              가상 계정입니다. 계정 변경은 실제 인증 연결 후 사용할 수 있습니다.
             </Notice>
           )}
-          <div className="user-toolbar">
-            <label className="search-label">
-              <span className="sr-only">사용자 검색</span>
-              <input
-                placeholder="ID 또는 이름 검색"
-                value={q}
-                maxLength={100}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPage(1);
-                }}
-              />
-            </label>
-            <select
-              aria-label="계정 상태"
-              value={status}
-              onChange={(e) => {
-                setStatus(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="active">활성 계정</option>
-              <option value="inactive">비활성 계정</option>
-              <option value="all">전체 계정</option>
-            </select>
-            <button
-              className="primary"
-              disabled={authMode === "mock"}
-              onClick={() => setAction({ type: "create" })}
-            >
-              {/* The plus stays in the accessible name; the browser tests look the button up by it. */}
-              <Icon name="add" />
-              <span className="sr-only">＋ </span>
-              계정 발급
-            </button>
-          </div>
+          <UserAction
+            key={`${type}:${user.id}`}
+            action={{ type, user }}
+            standalone
+            close={back}
+            refresh={() =>
+              navigate(`/admin/users${location.search}`, {
+                replace: true,
+                state: {
+                  message:
+                    type === "name"
+                      ? "이름을 변경했습니다."
+                      : "비밀번호를 재설정했습니다.",
+                },
+              })
+            }
+          />
+        </>
+      ) : (
+        <>
+          <button className="text-button page-back" onClick={back}>
+            뒤로가기
+          </button>
           <Notice kind="error">{error}</Notice>
-          {action && (
-            <UserAction
-              key={action.type + (action.user?.id || "")}
-              action={action}
-              close={() => setAction(null)}
-              refresh={() => setRefreshKey((v) => v + 1)}
-            />
-          )}
-          {loading ? (
-            <Spinner />
-          ) : data?.results.length ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>로그인 ID</th>
-                    <th>이름</th>
-                    <th>상태</th>
-                    <th>계정 관리</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.results.map((u) => (
-                    <tr key={u.id}>
-                      <td>{u.username}</td>
-                      <td>{u.full_name}</td>
-                      <td>
-                        <span className="status-dot" />
-                        {u.is_active ? "활성" : "비활성"}
-                      </td>
-                      <td>
-                        <div className="table-actions">
-                          <button
-                            disabled={authMode === "mock" || !u.is_active}
-                            onClick={() => setAction({ type: "name", user: u })}
-                          >
-                            이름 변경
-                          </button>
-                          <button
-                            disabled={authMode === "mock" || !u.is_active}
-                            onClick={() =>
-                              setAction({ type: "password", user: u })
-                            }
-                          >
-                            비밀번호 재설정
-                          </button>
-                          <button
-                            disabled={authMode === "mock" || !u.is_active}
-                            onClick={() =>
-                              setAction({ type: "deactivate", user: u })
-                            }
-                          >
-                            비활성화
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            !error && (
-              <Empty title="검색 결과가 없습니다">
-                검색어나 계정 상태를 바꿔 보세요.
-              </Empty>
-            )
-          )}
-          {data && (
-            <div className="pagination">
-              <span>전체 {data.count}명</span>
-              <button
-                disabled={!data.previous_page || loading}
-                onClick={() => setPage(data.previous_page)}
-              >
-                이전
-              </button>
-              <span>{data.page}페이지</span>
-              <button
-                disabled={!data.next_page || loading}
-                onClick={() => setPage(data.next_page)}
-              >
-                다음
-              </button>
-            </div>
-          )}
         </>
       )}
     </div>
+  );
+}
+
+export default function Admin() {
+  return (
+    <Routes>
+      <Route
+        index
+        element={
+          <AdminHome>
+            <AdminOverview key="dashboard" />
+          </AdminHome>
+        }
+      />
+      <Route
+        path="audit"
+        element={
+          <div className="page-content">
+            <h1>요청 감사 목록</h1>
+            <AdminOverview key="audit" view="audit" />
+          </div>
+        }
+      />
+      <Route path="audit/:requestId" element={<AdminAuditDetail />} />
+      <Route
+        path="users"
+        element={
+          <AdminHome title="사용자 관리">
+            <Users />
+          </AdminHome>
+        }
+      />
+      <Route path="users/:userId/name" element={<UserEdit type="name" />} />
+      <Route
+        path="users/:userId/password"
+        element={<UserEdit type="password" />}
+      />
+      <Route path="*" element={<Navigate to="/admin" replace />} />
+    </Routes>
   );
 }

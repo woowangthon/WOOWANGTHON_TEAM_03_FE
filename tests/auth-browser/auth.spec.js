@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { selectOption } from "../helpers/ui.js";
 import {
   admin,
   employee,
@@ -39,7 +40,7 @@ test("real client logs in, restores its session and logs out without exposing em
   await expect(page.locator("textarea, .history-list")).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole("heading", { name: "보안 현황" })).toBeVisible();
-  await page.getByRole("link", { name: "내 계정" }).click();
+  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
   await expect(
     page.getByRole("textbox", { name: "이름", exact: true }),
   ).toHaveValue(admin.full_name);
@@ -69,25 +70,21 @@ test("admin account operations use the contract and disabled users cannot be edi
 }) => {
   const state = await installAuthFixture(page, { signedIn: admin });
   await page.goto("/admin");
-  await page.getByRole("button", { name: "사용자 관리", exact: true }).click();
+  await page.getByRole("link", { name: "사용자 관리", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: employee.username }),
   ).toBeVisible();
-  await page
-    .getByRole("combobox", { name: "계정 상태" })
-    .selectOption("inactive");
+  await selectOption(page, "계정 상태", "비활성 계정");
   const inactive = page.getByRole("row").filter({ hasText: "USER0002" });
   await expect(
     inactive.getByRole("button", { name: "비밀번호 재설정" }),
   ).toBeDisabled();
-  await page
-    .getByRole("combobox", { name: "계정 상태" })
-    .selectOption("active");
+  await selectOption(page, "계정 상태", "활성 계정");
   await page.getByRole("button", { name: "＋ 계정 발급" }).click();
   const panel = page.locator(".action-panel");
   await panel.getByLabel("로그인 ID", { exact: true }).fill("USER0003");
   await panel.getByLabel("이름", { exact: true }).fill("신규 직원");
-  await panel.getByLabel("초기 비밀번호").fill(fakePassword);
+  await panel.getByLabel("초기 비밀번호", { exact: true }).fill(fakePassword);
   await panel.getByRole("button", { name: "일반 계정 발급" }).click();
   await expect(page.getByRole("cell", { name: "USER0003" })).toBeVisible();
   await page.getByPlaceholder("ID 또는 이름 검색").fill("USER0003");
@@ -96,10 +93,18 @@ test("admin account operations use the contract and disabled users cannot be edi
     0,
   );
   await row.getByRole("button", { name: "이름 변경" }).click();
+  await expect(page).toHaveURL(/\/admin\/users\/[^/]+\/name(?:\?|$)/);
+  await expect(
+    page.getByRole("button", { name: "뒤로가기", exact: true }),
+  ).toBeVisible();
   await panel.getByLabel("이름", { exact: true }).fill("변경 직원");
   await panel.getByRole("button", { name: "이름 변경" }).click();
   await expect(row.getByRole("cell", { name: "변경 직원" })).toBeVisible();
   await row.getByRole("button", { name: "비밀번호 재설정" }).click();
+  await expect(page).toHaveURL(/\/admin\/users\/[^/]+\/password(?:\?|$)/);
+  await expect(
+    page.getByRole("button", { name: "뒤로가기", exact: true }),
+  ).toBeVisible();
   await panel
     .getByLabel("새 비밀번호", { exact: true })
     .fill("ChangedFixture9!");
@@ -111,9 +116,7 @@ test("admin account operations use the contract and disabled users cannot be edi
     .getByRole("button", { name: "계정 비활성화", exact: true })
     .click();
   await expect(row).toHaveCount(0);
-  await page
-    .getByRole("combobox", { name: "계정 상태" })
-    .selectOption("inactive");
+  await selectOption(page, "계정 상태", "비활성 계정");
   await expect(row.getByRole("button", { name: "이름 변경" })).toBeDisabled();
   const id = "44444444-4444-4444-8444-444444444444";
   expect(state.calls).toEqual(
@@ -260,7 +263,7 @@ test("a delayed authentication error from a previous session cannot log out the 
   );
   release();
   await finished;
-  await page.getByRole("link", { name: "내 계정" }).click();
+  await page.getByRole("button", { name: "내 계정 설정", exact: true }).click();
   await expect(
     page.getByRole("textbox", { name: "이름", exact: true }),
   ).toHaveValue(admin.full_name);

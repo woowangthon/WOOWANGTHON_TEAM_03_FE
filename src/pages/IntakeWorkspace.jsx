@@ -5,8 +5,10 @@ import { describeApiError } from "../api/http.js";
 import { requestStateLabel, validateIntake } from "../api/requests.js";
 import { Notice, Spinner } from "../components/Common.jsx";
 import Icon from "../components/Icon.jsx";
+import { TextField } from "../components/Material.jsx";
 import ApprovalReview from "../components/ApprovalReview.jsx";
 import RequestResult from "../components/RequestResult.jsx";
+import AnswerOptions from "../components/AnswerOptions.jsx";
 import { terminalStates } from "../domain/requests.js";
 import { useRequestStatus } from "../hooks/useRequestStatus.js";
 import { processingRecovery } from "../api/processing.js";
@@ -38,6 +40,7 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
   const [message, setMessage] = useState("");
   const [starting, setStarting] = useState(false);
   const [confirmHide, setConfirmHide] = useState(false);
+  const [showContext, setShowContext] = useState(false);
   const [hiding, setHiding] = useState(false);
   const mutation = useRef(false);
   const [pdf, setPdf] = useState(null);
@@ -285,41 +288,50 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
       }
     }
   }
+  const completed =
+    data?.state === "completed" &&
+    typeof data.answer_text === "string" &&
+    Boolean(data.answer_text.trim());
+  function refreshStatus() {
+    setMessage("");
+    setError("");
+    status.refresh();
+  }
   return (
-    <section className="response-card intake-detail">
-      <div className="response-heading">
-        <span className="avatar-small">동</span>
-        <strong>의뢰 상세</strong>
-        {data && (
-          <span className={`state-tag ${data.state}`}>
-            {requestStateLabel(data.state)}
-          </span>
-        )}
-      </div>
+    <section
+      className={`response-card intake-detail${completed ? " completed-answer" : ""}`}
+    >
+      {!completed && (
+        <div className="response-heading">
+          <span className="avatar-small">마</span>
+          <strong>의뢰 상세</strong>
+          {data && (
+            <span className={`state-tag ${data.state}`}>
+              {requestStateLabel(data.state)}
+            </span>
+          )}
+        </div>
+      )}
       {loading && <Spinner>접수한 의뢰를 불러오는 중</Spinner>}
       <Notice kind="error">{error}</Notice>
       <Notice kind="error">{status.error}</Notice>
-      <Notice>{message}</Notice>
-      {!loading && (
-        <button
-          className="text-button"
-          disabled={busy}
-          onClick={() => {
-            setMessage("");
-            setError("");
-            status.refresh();
-          }}
-        >
+      {!completed && <Notice>{message}</Notice>}
+      {!loading && !completed && (
+        <button className="text-button" disabled={busy} onClick={refreshStatus}>
           상태 다시 조회
         </button>
       )}
       {data && (
         <>
-          <p className="fine-print request-id">접수 번호 {data.id}</p>
-          <div className="request-bubble">
-            <span className="eyebrow">접수한 요청문</span>
-            <p>{data.instruction || "요청문을 아직 추가하지 않았습니다."}</p>
-          </div>
+          {!completed && (
+            <p className="fine-print request-id">접수 번호 {data.id}</p>
+          )}
+          {(!completed || showContext) && (
+            <div className="request-bubble">
+              <span className="eyebrow">접수한 요청문</span>
+              <p>{data.instruction || "요청문을 아직 추가하지 않았습니다."}</p>
+            </div>
+          )}
           {data.state === "preparing" && (
             <Notice>
               접수한 내용을 확인한 뒤 검사를 시작해 주세요. PDF만 접수했다면
@@ -339,7 +351,7 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
               </p>
             </>
           )}
-          {data.document && (
+          {data.document && (!completed || showContext) && (
             <div className="document-card">
               <h2>첨부한 PDF</h2>
               <strong className="file-name">
@@ -384,10 +396,11 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
           )}
           {data.state === "preparing" && (
             <form className="intake-edit" onSubmit={save}>
-              <label htmlFor="saved-instruction">
-                {data.instruction ? "요청문 수정" : "이 의뢰에 요청문 추가"}
-              </label>
-              <textarea
+              <TextField
+                multiline
+                label={
+                  data.instruction ? "요청문 수정" : "이 의뢰에 요청문 추가"
+                }
                 id="saved-instruction"
                 rows={4}
                 value={instruction}
@@ -460,53 +473,67 @@ function RequestDetail({ id, onHistoryChange, onHistoryHidden }) {
               state={data.state}
               answer={data.answer_text}
               disabled={busy || loading}
-            />
+            >
+              {completed && (
+                <AnswerOptions
+                  disabled={busy || loading}
+                  onContext={() => setShowContext((value) => !value)}
+                  onRefresh={refreshStatus}
+                  onHide={() => setConfirmHide(true)}
+                />
+              )}
+            </RequestResult>
           )}
-          <div className="intake-edit">
-            {confirmHide ? (
-              <>
-                <p>
-                  목록에서 숨기면 이 의뢰의 상세 화면도 다시 열 수 없습니다.
-                  서버 원본과 관리자 감사 기록은 보관됩니다.
-                </p>
-                {["queued", "analyzing", "processing"].includes(data.state) && (
-                  <p className="fine-print">이미 시작된 처리는 계속됩니다.</p>
-                )}
-                {data.state === "awaiting_approval" && (
-                  <p className="fine-print">
-                    숨기면 이 의뢰의 외부 전송을 승인하거나 거절할 수 없습니다.
+          {(!completed || confirmHide) && (
+            <div className="intake-edit">
+              {confirmHide ? (
+                <>
+                  <p>
+                    목록에서 숨기면 이 의뢰의 상세 화면도 다시 열 수 없습니다.
+                    서버 원본과 관리자 감사 기록은 보관됩니다.
                   </p>
-                )}
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => setConfirmHide(false)}
-                  >
-                    돌아가기
-                  </button>
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={busy || loading}
-                    onClick={hideRequest}
-                  >
-                    {hiding ? "숨기는 중…" : "숨기기 확인"}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="text-button"
-                disabled={busy || loading}
-                onClick={() => setConfirmHide(true)}
-              >
-                목록에서 숨기기
-              </button>
-            )}
-          </div>
+                  {["queued", "analyzing", "processing"].includes(
+                    data.state,
+                  ) && (
+                    <p className="fine-print">이미 시작된 처리는 계속됩니다.</p>
+                  )}
+                  {data.state === "awaiting_approval" && (
+                    <p className="fine-print">
+                      숨기면 이 의뢰의 외부 전송을 승인하거나 거절할 수
+                      없습니다.
+                    </p>
+                  )}
+                  <div className="button-row">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => setConfirmHide(false)}
+                    >
+                      돌아가기
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={busy || loading}
+                      onClick={hideRequest}
+                    >
+                      {hiding ? "숨기는 중…" : "숨기기 확인"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy || loading}
+                  onClick={() => setConfirmHide(true)}
+                >
+                  목록에서 숨기기
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
     </section>
@@ -663,21 +690,8 @@ export default function IntakeWorkspace({
         ) : (
           <section className="welcome">
             {historyHidden && <Notice>내 요청 목록에서 숨겼습니다.</Notice>}
-            <span className="eyebrow">함께 일하는 안전한 AI</span>
-            <h1>
-              어떤 일을
-              <br />
-              도와드릴까요?
-            </h1>
-            <p>
-              요청문을 적거나 PDF를 첨부해 주세요.
-              <br />
-              PDF를 먼저 접수한 뒤 요청문을 추가할 수도 있습니다.
-            </p>
-            <Notice>
-              접수 후 내용을 확인하고 검사를 시작할 수 있습니다. 외부 전송이
-              필요한 요청은 검사 결과를 확인한 뒤 승인해 주세요.
-            </Notice>
+            <h1>어떤 일을 도와드릴까요?</h1>
+            <p>요청을 입력하거나 PDF를 첨부하세요.</p>
           </section>
         )}
       </div>
@@ -693,11 +707,16 @@ export default function IntakeWorkspace({
           <>
             <Notice kind="error">{error}</Notice>
             {attempt && !busy && (
-              <Notice kind="warning">
-                접수 결과를 확정하지 못했습니다. 입력을 유지한 채 같은 접수
-                번호로 다시 확인해 주세요. 새로고침하면 이 확인 정보가
-                사라지므로 최근 요청도 확인해 주세요.
-              </Notice>
+              <div className="intake-recovery">
+                <Notice kind="warning">
+                  접수 결과를 확정하지 못했습니다. 입력을 유지한 채 같은 접수
+                  번호로 다시 확인해 주세요. 새로고침하면 이 확인 정보가
+                  사라지므로 최근 요청도 확인해 주세요.
+                </Notice>
+                <button type="button" className="secondary" onClick={submit}>
+                  같은 접수 번호로 확인
+                </button>
+              </div>
             )}
             {attempt &&
               !busy &&
@@ -741,8 +760,7 @@ export default function IntakeWorkspace({
               {file && (
                 <div className="file-chip">
                   <span>
-                    <Icon name="picture_as_pdf" /> {file.name}{" "}
-                    <small>{file.size.toLocaleString()}바이트</small>
+                    <Icon name="picture_as_pdf" /> {file.name}
                   </span>
                   <button
                     type="button"
@@ -770,8 +788,7 @@ export default function IntakeWorkspace({
                 onCompositionEnd={() => {
                   composing.current = false;
                 }}
-                aria-describedby="intake-input-help"
-                placeholder="동료에게 부탁할 일을 적어 주세요"
+                placeholder="요청을 입력하세요"
               />
               <div className="composer-tools">
                 <input
@@ -789,27 +806,29 @@ export default function IntakeWorkspace({
                   {[...text].length.toLocaleString()} / 4,000
                 </span>
                 <button
-                  className="primary"
+                  className="send-button"
+                  aria-label="요청 접수"
+                  aria-busy={busy}
+                  title="요청 접수"
                   disabled={
-                    busy || (!text.trim() && !file) || [...text].length > 4000
+                    busy ||
+                    !!attempt ||
+                    (!text.trim() && !file) ||
+                    [...text].length > 4000
                   }
                 >
-                  {busy
-                    ? "접수 중…"
-                    : attempt
-                      ? "같은 접수 번호로 확인"
-                      : "의뢰 접수"}
+                  {busy ? (
+                    <span className="spinner" aria-hidden="true" />
+                  ) : (
+                    <Icon name="arrow_upward" />
+                  )}
                 </button>
               </div>
             </form>
-            <p className="composer-caption" id="intake-input-help">
-              Enter로 접수 · Shift+Enter로 줄바꿈 · PDF를 입력창에 끌어 첨부
-            </p>
-            <p className="composer-caption">
-              PDF 1개 · 10MB(10,000,000바이트) · 20쪽 이하. 암호 PDF는 지원하지
-              않습니다. 스캔 PDF의 본문 인식은 이 접수 단계에서 확인하지
-              않습니다.
-            </p>
+            <details className="attachment-help">
+              <summary>PDF 첨부 안내</summary>
+              <p>PDF 1개 · 최대 10MB · 20쪽. 암호 PDF는 지원하지 않습니다.</p>
+            </details>
           </>
         )}
       </div>

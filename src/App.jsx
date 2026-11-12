@@ -20,6 +20,7 @@ import IntakeWorkspace from "./pages/IntakeWorkspace.jsx";
 import { requestStateLabel } from "./api/requests.js";
 import Account from "./pages/Account.jsx";
 import Admin from "./pages/Admin.jsx";
+import AccountMenu from "./components/AccountMenu.jsx";
 
 function Shell() {
   const auth = useAuth();
@@ -152,19 +153,19 @@ function Shell() {
           </button>
         )}
         <nav className="main-nav">
-          {isEmployee && (
-            <NavLink to="/" end onClick={() => setMenuOpen(false)}>
-              <Icon name="chat" /> <span>AI 작업 공간</span>
-            </NavLink>
-          )}
           {isAdmin && (
-            <NavLink to="/admin" onClick={() => setMenuOpen(false)}>
-              <Icon name="monitoring" /> <span>보안 현황</span>
-            </NavLink>
+            <>
+              <NavLink to="/admin" end onClick={() => setMenuOpen(false)}>
+                <Icon name="monitoring" /> <span>보안 현황</span>
+              </NavLink>
+              <NavLink to="/admin/audit" onClick={() => setMenuOpen(false)}>
+                <Icon name="verified_user" /> <span>요청 감사 목록</span>
+              </NavLink>
+              <NavLink to="/admin/users" onClick={() => setMenuOpen(false)}>
+                <Icon name="account_circle" /> <span>사용자 관리</span>
+              </NavLink>
+            </>
           )}
-          <NavLink to="/account" onClick={() => setMenuOpen(false)}>
-            <Icon name="account_circle" /> <span>내 계정</span>
-          </NavLink>
         </nav>
         {isEmployee && (
           <>
@@ -229,20 +230,9 @@ function Shell() {
           </>
         )}
         <div className="sidebar-footer">
-          <div className="privacy-card">
-            <Icon name="verified_user" />
-            <p>
-              {isAdmin ? "관리와 AI 이용을 구분해요" : "전송 전, 한 번 더 확인"}
-              <br />
-              <small>
-                {isAdmin
-                  ? "AI 이용은 본인의 일반 계정으로 로그인하세요."
-                  : "내가 승인한 내용으로 일하세요."}
-              </small>
-            </p>
-          </div>
           <button
             className="profile-link"
+            aria-label="내 계정 설정"
             onClick={() => {
               navigate("/account");
               setMenuOpen(false);
@@ -258,6 +248,12 @@ function Shell() {
               </small>
             </span>
           </button>
+          <AccountMenu
+            onAccount={() => {
+              navigate("/account");
+              setMenuOpen(false);
+            }}
+          />
           <button className="logout" disabled={loggingOut} onClick={logout}>
             {loggingOut ? "로그아웃 중…" : "로그아웃"}
           </button>
@@ -275,28 +271,13 @@ function Shell() {
           >
             <Icon name="menu" />
           </button>
-          <span>{isAdmin ? "보안 관리" : "나의 안전한 AI 작업 공간"}</span>
-          <div className="connection-status">
-            <span className="status-dot" />
-            {authMode === "mock" ? "체험 계정" : "서버 인증"} ·{" "}
-            {isAdmin
-              ? requestMode === "mock"
-                ? "통계 예시"
-                : "실제 이용 현황"
-              : requestMode === "mock"
-                ? "가상 요청"
-                : "의뢰 접수 연결"}
-          </div>
         </header>
-        {(isAdmin || authMode === "mock" || requestMode === "mock") && (
+        {(authMode === "mock" || requestMode === "mock") && (
           <div className="mode-banner">
+            체험 화면 ·{" "}
             {authMode === "mock"
-              ? "개발 미리보기 · 가상 데이터는 브라우저 메모리에만 유지되며 실제 AI로 전송되지 않습니다."
-              : isAdmin
-                ? requestMode === "mock"
-                  ? "계정 관리는 실제 서버에 반영됩니다. 통계와 최근 차단·경고는 화면 예시입니다."
-                  : "계정 관리와 요청 감사·통계가 실제 서버에 연결되어 있습니다."
-                : "로그인은 실제 서버를 사용합니다. 요청·답변은 화면 예시이며 실제 AI로 전송되지 않습니다."}
+              ? "가상 계정·데이터"
+              : "실제 계정·가상 요청 데이터"}
           </div>
         )}
         <Notice kind="error">{error}</Notice>
@@ -329,7 +310,7 @@ function Shell() {
           />
           <Route path="/account" element={<Account />} />
           <Route
-            path="/admin"
+            path="/admin/*"
             element={
               isAdmin ? (
                 <Admin />

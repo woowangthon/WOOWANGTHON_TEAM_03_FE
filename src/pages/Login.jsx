@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { authMode } from "../api/services.js";
 import { Brand, Notice } from "../components/Common.jsx";
+import { PasswordField, TextField } from "../components/Material.jsx";
 import Icon from "../components/Icon.jsx";
 
 export default function Login() {
@@ -37,7 +38,7 @@ export default function Login() {
           <h1>
             좋은 생각에 집중하세요.
             <br />
-            정보는 동료가 살필게요.
+            민감정보는 먼저 살필게요.
           </h1>
           <p>
             문서 속 민감정보를 먼저 확인하고,
@@ -45,14 +46,12 @@ export default function Login() {
             내가 승인한 내용으로 AI와 일합니다.
           </p>
         </div>
-        <div className="story-footer">
-          <span className="status-dot" />
-          검사 → 전송 확인 → 답변
-        </div>
       </div>
       <section className="login-form">
         <h2>
-          {authMode === "mock" ? "동료를 만나보세요" : "다시 만나 반가워요"}
+          {authMode === "mock"
+            ? "마스킹 어시스턴트 체험하기"
+            : "다시 만나 반가워요"}
         </h2>
         <p className="muted">
           {authMode === "mock"
@@ -91,30 +90,28 @@ export default function Login() {
           </>
         ) : (
           <form onSubmit={submit}>
-            <label>
-              로그인 ID
-              <input
-                name="username"
-                autoComplete="username"
-                required
-                pattern="[A-Z0-9]{8}"
-                title="대문자 영문 또는 숫자로 된 8자리 ID"
-                aria-describedby="login-id-help"
-                placeholder="발급받은 ID"
-              />
-            </label>
+            <TextField
+              label="로그인 ID"
+              name="username"
+              autoComplete="username"
+              required
+              pattern="[A-Z0-9]{8}"
+              title="대문자 영문 또는 숫자로 된 8자리 ID"
+              aria-describedby="login-id-help"
+              placeholder="발급받은 ID"
+              leadingIcon="account_circle"
+            />
             <p className="fine-print" id="login-id-help">
               로그인 ID는 대문자 영문 또는 숫자로 된 8자리입니다.
             </p>
-            <label>
-              비밀번호
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-            </label>
+            <PasswordField
+              label="비밀번호"
+              name="password"
+              autoComplete="current-password"
+              placeholder="비밀번호를 입력하세요"
+              leadingIcon="lock"
+              required
+            />
             <button className="primary full" disabled={busy}>
               {busy ? "로그인 중…" : "로그인"}
             </button>
