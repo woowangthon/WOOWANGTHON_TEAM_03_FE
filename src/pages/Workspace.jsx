@@ -10,7 +10,8 @@ import {
 } from "../domain/requests.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
 import Icon from "../components/Icon.jsx";
-import MarkdownAnswer from "../components/MarkdownAnswer.jsx";
+import { Select } from "../components/Material.jsx";
+import RequestResult from "../components/RequestResult.jsx";
 
 export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
   const auth = useAuth();
@@ -20,7 +21,6 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
   const [pollVersion, setPollVersion] = useState(0);
   const mutationVersion = useRef(0);
   const input = useRef();
@@ -30,7 +30,6 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
   useEffect(() => {
     setRequest(null);
     setError("");
-    setCopied(false);
   }, [selectedId]);
 
   useEffect(() => {
@@ -146,17 +145,8 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
       <div className="conversation">
         {!selectedId ? (
           <section className="welcome">
-            <span className="eyebrow">함께 일하는 안전한 AI</span>
-            <h1>
-              오늘은 어떤 일을
-              <br />
-              도와드릴까요?
-            </h1>
-            <p>
-              요청을 작성하면 민감정보를 먼저 살펴봅니다.
-              <br />
-              외부 전송은 내용을 확인한 뒤 직접 승인하세요.
-            </p>
+            <h1>어떤 일을 도와드릴까요?</h1>
+            <p>요청을 입력하세요.</p>
             {requestMode === "mock" && (
               <>
                 <div className="section-label">
@@ -187,18 +177,24 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
           <Spinner>요청을 불러오는 중</Spinner>
         ) : (
           <>
-            <div className="request-bubble">
-              <span className="eyebrow">내 요청</span>
-              <p>{request.instruction}</p>
-            </div>
-            <section className="response-card">
-              <div className="response-heading">
-                <span className="avatar-small">동</span>
-                <strong>동료</strong>
-                <span className={`state-tag ${request.state}`}>
-                  {stateLabels[request.state]}
-                </span>
+            {request.state !== "completed" && (
+              <div className="request-bubble">
+                <span className="eyebrow">내 요청</span>
+                <p>{request.instruction}</p>
               </div>
+            )}
+            <section
+              className={`response-card${request.state === "completed" ? " completed-answer" : ""}`}
+            >
+              {request.state !== "completed" && (
+                <div className="response-heading">
+                  <span className="avatar-small">마</span>
+                  <strong>마스킹 어시스턴트</strong>
+                  <span className={`state-tag ${request.state}`}>
+                    {stateLabels[request.state]}
+                  </span>
+                </div>
+              )}
               {["analyzing", "processing"].includes(request.state) && (
                 <Spinner>
                   {request.state === "analyzing"
@@ -264,29 +260,12 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                 </>
               )}
               {request.state === "completed" && (
-                <>
-                  <div className="route-note">
-                    {request.scenario === "local"
-                      ? "사내 처리 예시 · 외부 미전송"
-                      : "외부 처리 예시 · 실제 전송 없음"}
-                  </div>
-                  <MarkdownAnswer>{request.answer}</MarkdownAnswer>
-                  <button
-                    className="text-button"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(request.answer);
-                        setCopied(true);
-                      } catch {
-                        setError(
-                          "복사하지 못했습니다. 답변을 직접 선택해 복사해 주세요.",
-                        );
-                      }
-                    }}
-                  >
-                    {copied ? "복사했어요" : "답변 복사"}
-                  </button>
-                </>
+                <RequestResult
+                  key={request.id}
+                  state={request.state}
+                  answer={request.answer}
+                  disabled={busy}
+                />
               )}
               {["blocked", "rejected", "expired", "failed"].includes(
                 request.state,
@@ -356,7 +335,7 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
               id="instruction"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="동료에게 부탁할 일을 적어 주세요"
+              placeholder="요청을 입력하세요"
               rows={3}
             />
             <div className="composer-tools">
@@ -371,8 +350,9 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                 <Icon name="attach_file" /> <span>PDF 첨부</span>
               </label>
               {requestMode === "mock" && (
-                <select
+                <Select
                   aria-label="예시 시나리오"
+                  className="composer-scenario"
                   value={scenario}
                   onChange={(e) => {
                     const s = scenarios.find((s) => s.id === e.target.value);
@@ -386,7 +366,7 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                       {s.title}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
               <span className="character-count">
                 {[...text].length.toLocaleString()} / 4,000
@@ -398,17 +378,15 @@ export default function Workspace({ selectedId, onSelect, onHistoryChange }) {
                 }
                 aria-label="검사 시작"
               >
-                {busy ? "…" : <Icon name="arrow_upward" />}
+                {busy ? (
+                  <span className="spinner" aria-hidden="true" />
+                ) : (
+                  <Icon name="arrow_upward" />
+                )}
               </button>
             </div>
           </form>
         )}
-        <p className="composer-caption">
-          각 요청은 독립적으로 처리됩니다.{" "}
-          {requestMode === "mock"
-            ? "현재 예시는 화면 검증용이며 새로고침 시 초기화됩니다."
-            : "실제 업무 API 연결을 준비 중입니다."}
-        </p>
       </div>
     </div>
   );

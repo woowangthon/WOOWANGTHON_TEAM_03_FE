@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Notice } from "./Common.jsx";
 import MarkdownAnswer from "./MarkdownAnswer.jsx";
+import Icon from "./Icon.jsx";
 
 const outcomes = {
   blocked: "보안 정책에 따라 요청을 차단했습니다.",
@@ -9,7 +10,7 @@ const outcomes = {
   failed: "요청 처리를 완료하지 못했습니다.",
 };
 
-export default function RequestResult({ state, answer, disabled }) {
+export default function RequestResult({ state, answer, disabled, children }) {
   const [copyResult, setCopyResult] = useState("");
 
   if (state !== "completed")
@@ -39,16 +40,20 @@ export default function RequestResult({ state, answer, disabled }) {
 
   return (
     <div className="answer">
-      <h2>서버에 저장된 답변</h2>
       <MarkdownAnswer>{answer}</MarkdownAnswer>
-      <button
-        type="button"
-        className="secondary"
-        disabled={disabled}
-        onClick={copyAnswer}
-      >
-        답변 복사
-      </button>
+      <div className="answer-actions">
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="답변 복사"
+          title="답변 복사"
+          disabled={disabled}
+          onClick={copyAnswer}
+        >
+          <Icon name="content_copy" />
+        </button>
+        {children}
+      </div>
       {copyResult && (
         <p className="fine-print" role="status">
           {copyResult}

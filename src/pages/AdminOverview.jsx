@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.jsx";
-import { adminApi, requestApi } from "../api/services.js";
+import { adminApi, requestApi, requestMode } from "../api/services.js";
 import { describeApiError } from "../api/http.js";
 import {
   adminMetrics,
@@ -15,6 +16,8 @@ import {
 } from "../api/admin.js";
 import { requestStateLabel, requestStateLabels } from "../api/requests.js";
 import { Empty, Notice, Spinner } from "../components/Common.jsx";
+import { DateField, Select, TextField } from "../components/Material.jsx";
+import { useAdminBack, useAdminScroll } from "./AdminNavigation.js";
 
 const time = (value) =>
   value
@@ -42,16 +45,14 @@ const statusLabels = {
   failed: "실패",
 };
 const status = (value) => statusLabels[value] || value || "미기록";
+
 function MetricValue({ metric }) {
   if (metric.status === "complete")
     return (
-      <>
-        <strong>
-          {metric.value.toLocaleString()}
-          <small>건</small>
-        </strong>
-        <span className="fine-print">확정 집계</span>
-      </>
+      <strong>
+        {metric.value.toLocaleString()}
+        <small>건</small>
+      </strong>
     );
   return (
     <>
@@ -65,38 +66,60 @@ function MetricValue({ metric }) {
     </>
   );
 }
+
 function DailyChart({ data }) {
+  const descriptionId = useId();
   const [key, setKey] = useState("total_requests");
   const label = adminMetrics.find(([id]) => id === key)[1];
   const max = Math.max(1, ...data.map((day) => day.metrics[key].known_value));
+  const hasUncertain = data.some(
+    (day) => day.metrics[key].status !== "complete",
+  );
   return (
     <section className="panel">
       <div className="panel-title">
         <h2>일별 추이</h2>
-        <select
+        <Select
           aria-label="차트 지표"
           value={key}
-          onChange={(e) => setKey(e.target.value)}
+          onChange={(event) => setKey(event.target.value)}
         >
           {adminMetrics.map(([id, name]) => (
             <option key={id} value={id}>
               {name}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
-      <p className="fine-print">
-        요청 생성일 기준 · 한국 시간. 부분 집계의 막대는 확인된 값만 표시합니다.
+      {hasUncertain && (
+        <p className="fine-print">
+          부분 집계는 확인된 값만 표시하며, 미확정 값은 0건이 아닙니다.
+        </p>
+      )}
+      <p className="sr-only" id={descriptionId}>
+        {data
+          .map((day) => {
+            const metric = day.metrics[key];
+            return `${day.date}: ${metric.status === "complete" ? count(metric.value) : `${metric.status === "partial" ? "부분 집계" : "집계 불가"}, 확인 ${metric.known_value}건, 미확정 요청 ${metric.unknown_request_count}건`}`;
+          })
+          .join(". ")}
       </p>
-      <div className="audit-chart" role="img" aria-label={`${label} 일별 추이`}>
+      <div
+        className="audit-chart"
+        role="img"
+        aria-label={`${label} 일별 추이`}
+        aria-describedby={descriptionId}
+      >
         {data.map((day) => {
           const metric = day.metrics[key];
           const known = metric.status !== "unavailable";
+          const description = `${day.date}: ${metric.status === "complete" ? count(metric.value) : `${metric.status === "partial" ? "부분 집계" : "집계 불가"}, 확인 ${metric.known_value}건, 미확정 요청 ${metric.unknown_request_count}건`}`;
           return (
             <div
               className="audit-bar-column"
               key={day.date}
-              aria-label={`${day.date}: ${metric.status === "complete" ? count(metric.value) : `${metric.status === "partial" ? "부분 집계" : "집계 불가"}, 확인 ${metric.known_value}건, 미확정 요청 ${metric.unknown_request_count}건`}`}
+              aria-label={description}
+              title={description}
             >
               <span>
                 {known
@@ -118,36 +141,81 @@ function DailyChart({ data }) {
           );
         })}
       </div>
-      <details>
-        <summary>일별 수치 표</summary>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>날짜</th>
-                <th>{label}</th>
-                <th>집계 상태</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((day) => (
-                <tr key={day.date}>
-                  <td>{day.date}</td>
-                  <td>{count(day.metrics[key].value)}</td>
-                  <td>
-                    {day.metrics[key].status === "complete"
-                      ? "확정"
-                      : `확인 ${day.metrics[key].known_value}건 · 미확정 요청 ${day.metrics[key].unknown_request_count}건`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
     </section>
   );
 }
+
+const exampleId = "00000000-0000-4000-8000-000000000001";
+function exampleRequest() {
+  return {
+    request_id: exampleId,
+    created_at: `${recentPeriod().date_to}T01:30:00Z`,
+    finished_at: null,
+    user: {
+      id: "example-1",
+      username: "USER0001",
+      full_name: "가상 사용자 하나",
+      is_active: true,
+    },
+    state: "blocked",
+    processing_route: "blocked",
+    inspection_status: "complete",
+    detection_count: 2,
+    detection_labels: ["company"],
+    warning_codes: [],
+    error_code: null,
+    original_filename: null,
+    instruction: "가상 감사 요청입니다.",
+    input_text: "가상 입력문입니다.",
+    updated_at: null,
+    hidden_at: null,
+    document: null,
+    detection_is_final: true,
+    detection_spans: [],
+    masking_mappings: [],
+    approval: {},
+    delivery: { status: "not_sent" },
+    failure: {},
+  };
+}
+function exampleStatistics(filters) {
+  const metric = (value) => ({
+    value,
+    known_value: value,
+    unknown_request_count: 0,
+    status: "complete",
+  });
+  const included = exampleList({ filters, page: 1, page_size: 20 }).count;
+  const values = [included, included * 2, 0, 0, included, 0];
+  const metrics = Object.fromEntries(
+    adminMetrics.map(([key], index) => [key, metric(values[index])]),
+  );
+  const daily = [];
+  for (
+    let stamp = Date.parse(filters.date_from);
+    stamp <= Date.parse(filters.date_to);
+    stamp += 86400000
+  ) {
+    const date = new Date(stamp).toISOString().slice(0, 10);
+    const isRequestDay = date === exampleRequest().created_at.slice(0, 10);
+    const dayValues = Object.fromEntries(
+      adminMetrics.map(([key], index) => [
+        key,
+        metric(isRequestDay ? values[index] : 0),
+      ]),
+    );
+    daily.push({
+      date,
+      metrics: dayValues,
+    });
+  }
+  return {
+    summary: { metrics },
+    daily,
+    calculated_at: new Date().toISOString(),
+  };
+}
+
 function AuditDetail({ id, close, onForbidden }) {
   const auth = useAuth();
   const [data, setData] = useState(null);
@@ -174,8 +242,16 @@ function AuditDetail({ id, close, onForbidden }) {
     if (fileUrl.current) URL.revokeObjectURL(fileUrl.current);
     fileUrl.current = null;
     setPdf(null);
-    auth
-      .run(() => adminApi.detail(auth.user, id, { signal: controller.signal }))
+    Promise.resolve()
+      .then(() =>
+        requestMode === "mock"
+          ? id === exampleId
+            ? exampleRequest()
+            : Promise.reject(new Error("요청을 찾을 수 없습니다."))
+          : auth.run(() =>
+              adminApi.detail(auth.user, id, { signal: controller.signal }),
+            ),
+      )
       .then((next) => {
         if (active) setData(next);
       })
@@ -213,9 +289,9 @@ function AuditDetail({ id, close, onForbidden }) {
     }
   }
   return (
-    <section className="panel audit-detail" aria-label="요청 감사 상세">
+    <section className="panel audit-detail" aria-label="요청 검사 상세">
       <div className="panel-title">
-        <h2>요청 감사 상세</h2>
+        <h1>요청 검사 상세</h1>
         <div className="table-actions">
           <button
             disabled={busy || pdfBusy}
@@ -223,10 +299,12 @@ function AuditDetail({ id, close, onForbidden }) {
           >
             상세 다시 조회
           </button>
-          <button onClick={close}>상세 닫기</button>
+          <button className="text-button page-back" onClick={close}>
+            뒤로가기
+          </button>
         </div>
       </div>
-      <p className="fine-print request-id">접수 번호 {id}</p>
+
       <Notice kind="error">{error}</Notice>
       {busy && <Spinner />}
       {data && (
@@ -425,98 +503,290 @@ function AuditDetail({ id, close, onForbidden }) {
   );
 }
 
-export default function AdminOverview() {
-  const auth = useAuth();
-  const [draft, setDraft] = useState(() => ({
-    ...recentPeriod(),
-    q: "",
-    state: "",
-    processing_route: "",
-    detection_label: "",
-    has_warnings: "",
-    inspection_status: "",
-    inspection_anomaly: "",
-    request_id: "",
-    user_id: "",
-  }));
-  const [query, setQuery] = useState(() => ({
-    filters: draft,
-    page: 1,
-    page_size: 20,
-  }));
+export function AdminAuditDetail() {
+  const { requestId } = useParams();
+  const back = useAdminBack("/admin/audit");
+  const [forbidden, setForbidden] = useState(false);
+  useAdminScroll();
+  useEffect(() => setForbidden(false), [requestId]);
+  return (
+    <div className="page-content detail-page">
+      {forbidden ? (
+        <>
+          <button className="text-button page-back" onClick={back}>
+            뒤로가기
+          </button>
+          <Notice kind="error">
+            관리자 조회 권한이 없습니다. 이전 조회 자료를 닫았습니다.
+          </Notice>
+          <button className="secondary" onClick={() => setForbidden(false)}>
+            권한 다시 확인
+          </button>
+        </>
+      ) : (
+        <AuditDetail
+          key={requestId}
+          id={requestId}
+          close={back}
+          onForbidden={() => setForbidden(true)}
+        />
+      )}
+    </div>
+  );
+}
+
+const filterKeys = [
+  "q",
+  "state",
+  "processing_route",
+  "detection_label",
+  "has_warnings",
+  "inspection_status",
+  "inspection_anomaly",
+  "user_id",
+];
+function readQuery(search) {
+  const params = new URLSearchParams(search);
+  const recent = recentPeriod();
+  const filters = {
+    date_from: params.get("date_from") || recent.date_from,
+    date_to: params.get("date_to") || recent.date_to,
+    ...Object.fromEntries(
+      filterKeys.map((key) => [key, params.get(key) || ""]),
+    ),
+  };
+  const page = Number(params.get("page"));
+  const size = Number(params.get("page_size"));
+  return {
+    filters,
+    page: Number.isInteger(page) && page > 0 ? page : 1,
+    page_size: [10, 20, 50].includes(size) ? size : 20,
+  };
+}
+function queryParams(query) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query.filters))
+    if (value) params.set(key, value);
+  if (query.page > 1) params.set("page", query.page);
+  if (query.page_size !== 20) params.set("page_size", query.page_size);
+  return params;
+}
+
+function AuditFilters({ query, onApply }) {
+  const [draft, setDraft] = useState(query.filters);
   const [validation, setValidation] = useState("");
-  const [stats, setStats] = useState(null);
-  const [list, setList] = useState(null);
-  const [errors, setErrors] = useState({});
+  useEffect(() => {
+    setDraft(query.filters);
+    setValidation("");
+  }, [query]);
+  const change = (key) => (event) =>
+    setDraft((current) => ({ ...current, [key]: event.target.value }));
+  function apply(event) {
+    event.preventDefault();
+    const error = validatePeriod(draft);
+    setValidation(error);
+    if (!error) onApply({ ...query, filters: { ...draft }, page: 1 });
+  }
+  const field = (key, label, options) => (
+    <Select key={key} label={label} value={draft[key]} onChange={change(key)}>
+      <option value="">전체</option>
+      {Object.entries(options).map(([value, text]) => (
+        <option value={value} key={value}>
+          {text}
+        </option>
+      ))}
+    </Select>
+  );
+  return (
+    <form className="panel audit-filters" onSubmit={apply}>
+      <div className="panel-title">
+        <h2>조회 조건</h2>
+        <div className="period-presets" role="group" aria-label="조회 기간">
+          {[1, 7, 30].map((days) => {
+            const period = recentPeriod(days);
+            const selected =
+              draft.date_from === period.date_from &&
+              draft.date_to === period.date_to;
+            return (
+              <button
+                type="button"
+                key={days}
+                aria-pressed={selected}
+                onClick={() => {
+                  const next = { ...draft, ...period };
+                  setDraft(next);
+                  setValidation("");
+                  onApply({ ...query, filters: next, page: 1 });
+                }}
+              >
+                최근 {days}일
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="audit-filter-grid">
+        <DateField
+          label="시작일"
+          required
+          value={draft.date_from}
+          onChange={change("date_from")}
+        />
+        <DateField
+          label="종료일"
+          required
+          value={draft.date_to}
+          onChange={change("date_to")}
+        />
+        <TextField
+          className="audit-search"
+          label="이용자·파일명 검색"
+          maxLength={100}
+          placeholder="로그인 ID, 이름 또는 파일명"
+          value={draft.q}
+          onChange={change("q")}
+        />
+        {field("state", "요청 상태", requestStateLabels)}
+        {field("processing_route", "처리 경로", routeLabels)}
+        {field("detection_label", "탐지 분류", detectionLabels)}
+        {field("has_warnings", "경고 여부", {
+          true: "있음",
+          false: "없음 · 검사 완료",
+        })}
+        {field("inspection_status", "검사 상태", inspectionLabels)}
+        {field("inspection_anomaly", "검사 이상", {
+          true: "이상 · 불완전 검사 또는 실패",
+          false: "정상 · 검사 완료",
+        })}
+      </div>
+      <details>
+        <summary>사용자 번호로 검색</summary>
+        <TextField
+          label="사용자 번호"
+          placeholder="UUID 전체 입력"
+          value={draft.user_id}
+          onChange={change("user_id")}
+        />
+      </details>
+      <Notice kind="error">{validation}</Notice>
+      <button className="primary">조건 적용</button>
+    </form>
+  );
+}
+
+function exampleList(query) {
+  const row = exampleRequest();
+  const filters = query.filters;
+  const matches =
+    (!filters.q ||
+      `${row.user.username} ${row.user.full_name}`
+        .toLowerCase()
+        .includes(filters.q.toLowerCase())) &&
+    (!filters.state || filters.state === row.state) &&
+    (!filters.processing_route ||
+      filters.processing_route === row.processing_route) &&
+    (!filters.inspection_status ||
+      filters.inspection_status === row.inspection_status) &&
+    (!filters.detection_label ||
+      row.detection_labels.includes(filters.detection_label)) &&
+    filters.has_warnings !== "true" &&
+    filters.inspection_anomaly !== "true" &&
+    (!filters.user_id || filters.user_id === row.user.id) &&
+    row.created_at.slice(0, 10) >= filters.date_from &&
+    row.created_at.slice(0, 10) <= filters.date_to;
+  return {
+    results: matches && query.page === 1 ? [row] : [],
+    count: matches ? 1 : 0,
+    page: query.page,
+    page_size: query.page_size,
+    total_pages: 1,
+    next_page: null,
+    previous_page: query.page > 1 ? 1 : null,
+  };
+}
+
+export default function AdminOverview({ view = "dashboard" }) {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const search = params.toString();
+  const query = useMemo(() => readQuery(search), [search]);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const [version, setVersion] = useState(0);
   const [forbidden, setForbidden] = useState(false);
-  const [selected, setSelected] = useState(null);
   const [lastSuccess, setLastSuccess] = useState(null);
-  const statisticsCount = stats?.summary.metrics.total_requests.value;
-  const countMismatch =
-    !busy &&
-    list &&
-    Number.isInteger(statisticsCount) &&
-    list.count !== statisticsCount;
-  function deny() {
-    setForbidden(true);
-    setStats(null);
-    setList(null);
-    setSelected(null);
-  }
+  const [loadedSearch, setLoadedSearch] = useState(null);
+  const saveScroll = useAdminScroll(!busy && loadedSearch === search);
+  const isAudit = view === "audit";
+  const updateQuery = (next) => {
+    const nextParams = queryParams(next);
+    if (nextParams.toString() === search) return;
+    // Disable actions before router transitions so a second click cannot reuse
+    // the previous render's filters while the new query is being applied.
+    setBusy(true);
+    setData(null);
+    setParams(nextParams);
+  };
+
   useEffect(() => {
     if (forbidden) return;
     let active = true;
     let timer;
     const controller = new AbortController();
-    setStats(null);
-    setList(null);
-    setSelected(null);
+    setData(null);
     setLastSuccess(null);
+    setLoadedSearch(null);
+    const invalid = validatePeriod(query.filters);
+    if (invalid) {
+      setError(invalid);
+      setBusy(false);
+      setLoadedSearch(search);
+      return () => controller.abort();
+    }
     async function load() {
       setBusy(true);
-      setErrors({});
-      const options = { signal: controller.signal };
-      const read = (operation) =>
-        auth.run(operation).catch((error) => {
-          // Permission loss must hide data immediately, even if the other read stalls.
-          if (active && error.code === "FORBIDDEN") {
-            active = false;
-            controller.abort();
-            clearTimeout(timer);
-            deny();
-            setBusy(false);
-          }
-          throw error;
-        });
-      const results = await Promise.allSettled([
-        read(() => adminApi.statistics(auth.user, query.filters, options)),
-        read(() =>
-          adminApi.list(auth.user, query.filters, {
-            ...options,
-            page: query.page,
-            page_size: query.page_size,
-          }),
-        ),
-      ]);
-      if (!active) return;
-      const nextErrors = {};
-      for (const [index, key] of ["stats", "list"].entries()) {
-        const result = results[index];
-        const setter = key === "stats" ? setStats : setList;
-        if (result.status === "fulfilled") setter(result.value);
-        else {
-          setter(null);
-          nextErrors[key] = describeApiError(result.reason);
+      setError("");
+      try {
+        const options = { signal: controller.signal };
+        const result =
+          requestMode === "mock"
+            ? isAudit
+              ? exampleList(query)
+              : exampleStatistics(query.filters)
+            : await auth.run(() =>
+                isAudit
+                  ? adminApi.list(auth.user, query.filters, {
+                      ...options,
+                      page: query.page,
+                      page_size: query.page_size,
+                    })
+                  : adminApi.statistics(auth.user, query.filters, options),
+              );
+        if (active) {
+          setData(result);
+          setLastSuccess(new Date().toISOString());
+        }
+      } catch (err) {
+        if (!active) return;
+        setData(null);
+        if (err.code === "FORBIDDEN") {
+          active = false;
+          controller.abort();
+          clearTimeout(timer);
+          setForbidden(true);
+          setBusy(false);
+          return;
+        }
+        if (err.name !== "AbortError") setError(describeApiError(err));
+      } finally {
+        if (active) {
+          setBusy(false);
+          setLoadedSearch(search);
         }
       }
-      setErrors(nextErrors);
-      setBusy(false);
-      if (!Object.keys(nextErrors).length)
-        setLastSuccess(new Date().toISOString());
-      // Schedule after both reads finish: no overlapping automatic refreshes.
-      timer = setTimeout(load, 30000);
+      if (active && requestMode === "real") timer = setTimeout(load, 30000);
     }
     load();
     return () => {
@@ -524,33 +794,8 @@ export default function AdminOverview() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, version, forbidden]);
-  function apply(event) {
-    event.preventDefault();
-    const error = validatePeriod(draft);
-    setValidation(error);
-    if (!error)
-      setQuery({ filters: { ...draft }, page: 1, page_size: query.page_size });
-  }
-  function field(key, label, options) {
-    return (
-      <label key={key}>
-        {label}
-        <select
-          aria-label={label}
-          value={draft[key]}
-          onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-        >
-          <option value="">전체</option>
-          {Object.entries(options).map(([value, text]) => (
-            <option value={value} key={value}>
-              {text}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
+  }, [query, version, forbidden, isAudit, search]);
+
   if (forbidden)
     return (
       <section>
@@ -562,179 +807,72 @@ export default function AdminOverview() {
           className="secondary"
           onClick={() => {
             setForbidden(false);
-            setVersion((v) => v + 1);
+            setVersion((value) => value + 1);
           }}
         >
           권한 다시 확인
         </button>
       </section>
     );
+
   return (
     <div className="admin-overview">
-      <form className="panel audit-filters" onSubmit={apply}>
-        <div className="panel-title">
-          <h2>조회 조건</h2>
-          <div className="table-actions">
-            {[1, 7, 30].map((days) => (
-              <button
-                type="button"
-                key={days}
-                onClick={() => {
-                  const next = { ...draft, ...recentPeriod(days) };
-                  setDraft(next);
-                  setValidation("");
-                  setQuery({
-                    filters: next,
-                    page: 1,
-                    page_size: query.page_size,
-                  });
-                }}
-              >
-                최근 {days}일
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="audit-filter-grid">
-          <label>
-            시작일
-            <input
-              type="date"
-              required
-              value={draft.date_from}
-              onChange={(e) =>
-                setDraft({ ...draft, date_from: e.target.value })
-              }
-            />
-          </label>
-          <label>
-            종료일
-            <input
-              type="date"
-              required
-              value={draft.date_to}
-              onChange={(e) => setDraft({ ...draft, date_to: e.target.value })}
-            />
-          </label>
-          <label className="audit-search">
-            이용자·파일명 검색
-            <input
-              maxLength={100}
-              placeholder="로그인 ID, 이름 또는 파일명"
-              value={draft.q}
-              onChange={(e) => setDraft({ ...draft, q: e.target.value })}
-            />
-          </label>
-          {field("state", "요청 상태", requestStateLabels)}
-          {field("processing_route", "처리 경로", routeLabels)}
-          {field("detection_label", "탐지 분류", detectionLabels)}
-          {field("has_warnings", "경고 여부", {
-            true: "있음",
-            false: "없음 · 검사 완료",
-          })}
-          {field("inspection_status", "검사 상태", inspectionLabels)}
-          {field("inspection_anomaly", "검사 이상", {
-            true: "이상 · 불완전 검사 또는 실패",
-            false: "정상 · 검사 완료",
-          })}
-        </div>
-        <details>
-          <summary>접수·사용자 번호로 검색</summary>
-          <div className="audit-filter-grid">
-            {[
-              ["request_id", "접수 번호"],
-              ["user_id", "사용자 번호"],
-            ].map(([key, label]) => (
-              <label key={key}>
-                {label}
-                <input
-                  placeholder="UUID 전체 입력"
-                  value={draft[key]}
-                  onChange={(e) =>
-                    setDraft({ ...draft, [key]: e.target.value })
-                  }
-                />
-              </label>
-            ))}
-          </div>
-        </details>
-        <Notice kind="error">{validation}</Notice>
-        <button className="primary">조건 적용</button>
-        <p className="fine-print">
-          모든 조건을 목록·통계에 함께 적용합니다. 경고 없음과 정상 검사는 검사
-          완료 요청에서 확인합니다.
-        </p>
-      </form>
+      {requestMode === "mock" && (
+        <Notice>가상 데이터로 구성한 화면 예시입니다.</Notice>
+      )}
+      <AuditFilters query={query} onApply={updateQuery} />
       <div className="audit-refresh">
         <div>
           <b>
             {query.filters.date_from} ~ {query.filters.date_to}
           </b>
           <p className="fine-print">
-            한국 시간의 요청 생성일 기준 · 조회 완료 후 30초마다 갱신
-            <br />
-            최근 전체 조회 성공: {time(lastSuccess)}
+            최근 갱신 {time(lastSuccess)}
             {busy ? " · 갱신 중…" : ""}
           </p>
         </div>
         <button
           className="secondary"
           disabled={busy}
-          onClick={() => setVersion((v) => v + 1)}
+          onClick={() => setVersion((value) => value + 1)}
         >
           새로고침
         </button>
       </div>
-      {busy && !stats && !list && <Spinner>이용 현황을 불러오는 중</Spinner>}
-      {countMismatch && (
-        <Notice kind="warning">
-          목록 {count(list.count)}과 통계 {count(statisticsCount)}의 요청 수가
-          다릅니다. 새로고침해 확인해 주세요.
-        </Notice>
+      {busy && !data && (
+        <Spinner>
+          {isAudit ? "요청 목록을 불러오는 중" : "이용 현황을 불러오는 중"}
+        </Spinner>
       )}
       <Notice kind="error">
-        {errors.stats && `통계 조회 실패: ${errors.stats}`}
+        {error && `${isAudit ? "목록" : "통계"} 조회 실패: ${error}`}
       </Notice>
-      {stats && (
+      {!isAudit && data && (
         <>
           <div className="metrics">
             {adminMetrics.map(([key, label]) => (
               <div className="metric" key={key} data-testid={`metric-${key}`}>
                 <span>{label}</span>
-                <MetricValue metric={stats.summary.metrics[key]} />
+                <MetricValue metric={data.summary.metrics[key]} />
               </div>
             ))}
           </div>
-          <p className="fine-print">
-            집계 시각 {time(stats.calculated_at)}
-            <br />
-            검사 완료{" "}
-            {count(stats.summary.coverage.inspection_complete_requests)} · 대기{" "}
-            {count(stats.summary.coverage.inspection_pending_requests)} · 축소{" "}
-            {count(stats.summary.coverage.inspection_degraded_requests)} · 실패{" "}
-            {count(stats.summary.coverage.inspection_failed_requests)} · 전송
-            여부 불명{" "}
-            {count(stats.summary.coverage.external_delivery_unknown_requests)}
-            <br />
-            정책 차단은 거절·만료를 포함하지 않습니다. 외부 경로 판정이나
-            승인만으로 전송 완료를 계산하지 않습니다.
-          </p>
-          <DailyChart data={stats.daily} />
+          <DailyChart data={data.daily} />
         </>
       )}
-      <section className="panel" aria-label="관리자 요청 목록">
-        <div className="panel-title">
-          <h2>요청 감사 목록</h2>
-          <label>
-            페이지당
-            <select
+      {isAudit && (
+        <section className="panel" aria-label="관리자 요청 목록">
+          <div className="panel-title">
+            <h2>조회 결과</h2>
+            <Select
+              label="페이지당"
               aria-label="감사 목록 페이지 크기"
               value={query.page_size}
-              onChange={(e) =>
-                setQuery({
+              onChange={(event) =>
+                updateQuery({
                   ...query,
                   page: 1,
-                  page_size: Number(e.target.value),
+                  page_size: Number(event.target.value),
                 })
               }
             >
@@ -743,109 +881,97 @@ export default function AdminOverview() {
                   {value}건
                 </option>
               ))}
-            </select>
-          </label>
-        </div>
-        <p className="fine-print">
-          최근 접수 순 · 숨긴 요청과 비활성 계정의 이력도 포함합니다. 분류
-          필터를 적용해도 각 요청의 탐지 수는 모든 분류의 합계입니다.
-        </p>
-        <Notice kind="error">
-          {errors.list && `목록 조회 실패: ${errors.list}`}
-        </Notice>
-        {list &&
-          (list.results.length ? (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>접수·이용자</th>
-                    <th>입력</th>
-                    <th>상태·경로</th>
-                    <th>검사·탐지</th>
-                    <th>경고·오류</th>
-                    <th>감사</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {list.results.map((row) => (
-                    <tr key={row.request_id}>
-                      <td>
-                        {time(row.created_at)}
-                        <br />
-                        {row.user.full_name} · {row.user.username}
-                        <small className="request-id">{row.request_id}</small>
-                      </td>
-                      <td className="file-name">
-                        {row.original_filename || "요청문"}
-                      </td>
-                      <td>
-                        {requestStateLabel(row.state)}
-                        <br />
-                        {routeLabels[row.processing_route] || "경로 미결정"}
-                      </td>
-                      <td>
-                        {inspectionLabels[row.inspection_status] || "확인 필요"}
-                        <br />
-                        {count(row.detection_count)}
-                        <small>
-                          {row.detection_labels
-                            ?.map((label) => detectionLabels[label] || label)
-                            .join(", ")}
-                        </small>
-                      </td>
-                      <td className="audit-diagnostics">
-                        {warningText(row)}
-                        <br />
-                        {row.error_code ? failureLabel(row.error_code) : ""}
-                      </td>
-                      <td>
-                        <button
-                          className="text-button"
-                          aria-label={`${row.request_id} 상세 보기`}
-                          onClick={() => setSelected(row.request_id)}
-                        >
-                          상세 보기
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <Empty title="해당하는 요청이 없습니다">
-              기간이나 검색 조건을 바꿔 보세요.
-            </Empty>
-          ))}
-        {list && (
-          <div className="pagination">
-            <span>전체 {list.count}건</span>
-            <button
-              disabled={busy || !list.previous_page}
-              onClick={() => setQuery({ ...query, page: list.previous_page })}
-            >
-              이전
-            </button>
-            <span>
-              {list.page} / {list.total_pages}페이지
-            </span>
-            <button
-              disabled={busy || !list.next_page}
-              onClick={() => setQuery({ ...query, page: list.next_page })}
-            >
-              다음
-            </button>
+            </Select>
           </div>
-        )}
-      </section>
-      {selected && (
-        <AuditDetail
-          key={selected}
-          id={selected}
-          close={() => setSelected(null)}
-          onForbidden={deny}
-        />
+          {data &&
+            (data.results.length ? (
+              <div className="table-wrap">
+                <table className="audit-list-table">
+                  <thead>
+                    <tr>
+                      <th>접수 시각</th>
+                      <th>이용자 이름</th>
+                      <th>상태·경로</th>
+                      <th>검사·탐지</th>
+                      <th>경고·오류</th>
+                      <th>감사</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.results.map((row) => (
+                      <tr key={row.request_id}>
+                        <td>{time(row.created_at)}</td>
+                        <td>{row.user.full_name}</td>
+                        <td>
+                          {requestStateLabel(row.state)}
+                          <br />
+                          {routeLabels[row.processing_route] || "경로 미결정"}
+                        </td>
+                        <td>
+                          {inspectionLabels[row.inspection_status] ||
+                            "확인 필요"}
+                          <br />
+                          {count(row.detection_count)}
+                          <small>
+                            {row.detection_labels
+                              ?.map((label) => detectionLabels[label] || label)
+                              .join(", ")}
+                          </small>
+                        </td>
+                        <td className="audit-diagnostics">
+                          {warningText(row)}
+                          <br />
+                          {row.error_code ? failureLabel(row.error_code) : ""}
+                        </td>
+                        <td>
+                          <button
+                            className="text-button audit-detail-button"
+                            aria-label={`${row.user.full_name} 요청 상세 보기`}
+                            onClick={() => {
+                              saveScroll();
+                              navigate(
+                                `/admin/audit/${row.request_id}${search ? `?${search}` : ""}`,
+                                { state: { adminReturn: "/admin/audit" } },
+                              );
+                            }}
+                          >
+                            <span>상세</span>
+                            <span>보기</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty title="해당하는 요청이 없습니다">
+                기간이나 검색 조건을 바꿔 보세요.
+              </Empty>
+            ))}
+          {data && (
+            <div className="pagination">
+              <span>전체 {data.count}건</span>
+              <button
+                disabled={busy || !data.previous_page}
+                onClick={() =>
+                  updateQuery({ ...query, page: data.previous_page })
+                }
+              >
+                이전
+              </button>
+              <span>
+                {data.page} / {data.total_pages}페이지
+              </span>
+              <button
+                disabled={busy || !data.next_page}
+                onClick={() => updateQuery({ ...query, page: data.next_page })}
+              >
+                다음
+              </button>
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

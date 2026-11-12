@@ -29,18 +29,38 @@ const paths = {
     "m40-120 440-760 440 760H40Zm104-60h672L480-760 144-180Zm361.5-65.68q8.5-8.67 8.5-21.5 0-12.82-8.68-21.32-8.67-8.5-21.5-8.5-12.82 0-21.32 8.68-8.5 8.67-8.5 21.5 0 12.82 8.68 21.32 8.67 8.5 21.5 8.5 12.82 0 21.32-8.68ZM454-348h60v-224h-60v224Zm26-122Z",
 };
 
+// Compact geometry for the shared form and menu controls (24-unit grid).
+const controlPaths = {
+  content_copy:
+    "M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1Zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H8V7h11v14Z",
+  more_vert:
+    "M12 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z",
+  expand_more: "m7 9 5 5 5-5 1.4 1.4L12 16.8l-6.4-6.4L7 9Z",
+  check: "m9 16.2-4.2-4.2L3.4 13.4 9 19 21 7l-1.4-1.4L9 16.2Z",
+  lock: "M7 10V7a5 5 0 0 1 10 0v3h1a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h1Zm2 0h6V7a3 3 0 0 0-6 0v3Zm-3 2v8h12v-8H6Zm6 2a2 2 0 0 1 1 3.73V19h-2v-1.27A2 2 0 0 1 12 14Z",
+  visibility:
+    "M12 5C7 5 3 8 1 12c2 4 6 7 11 7s9-3 11-7c-2-4-6-7-11-7Zm0 2c3.7 0 7 2 8.7 5-1.7 3-5 5-8.7 5s-7-2-8.7-5C5 9 8.3 7 12 7Zm0 1a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z",
+  visibility_off:
+    "m3.3 2 18.7 18.7-1.3 1.3-3.5-3.5A13 13 0 0 1 12 19c-5 0-9-3-11-7a16 16 0 0 1 4-4.8L2 3.3 3.3 2Zm3.1 6.4A13 13 0 0 0 3.3 12C5 15 8.3 17 12 17c1.2 0 2.4-.2 3.5-.6l-1.9-1.9A4 4 0 0 1 8.5 9.4L6.4 8.4ZM12 5c5 0 9 3 11 7a15 15 0 0 1-3 3.8l-1.4-1.4a13 13 0 0 0 2.1-2.4C19 9 15.7 7 12 7h-1.2L9 5.3 12 5Z",
+  calendar_month:
+    "M7 2h2v2h6V2h2v2h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3V2ZM4 6v3h16V6H4Zm0 5v9h16v-9H4Zm3 2h3v3H7v-3Zm7 0h3v3h-3v-3Z",
+  chevron_left: "m14.6 6-6 6 6 6 1.4-1.4-4.6-4.6L16 7.4 14.6 6Z",
+  chevron_right: "m9.4 6 6 6-6 6L8 16.6l4.6-4.6L8 7.4 9.4 6Z",
+  arrow_back: "m12 4 1.4 1.4L7.8 11H21v2H7.8l5.6 5.6L12 20l-8-8 8-8Z",
+};
+
 /**
  * Decorative icon drawn in the current text colour. It is hidden from
  * assistive technology, so the surrounding control needs its own name.
  * An unknown name throws so a typo is caught in development and tests.
  */
 export default function Icon({ name, className = "" }) {
-  const path = paths[name];
+  const path = paths[name] || controlPaths[name];
   if (!path) throw new Error(`Unknown icon: ${name}`);
   return (
     <svg
       className={`icon ${className}`.trim()}
-      viewBox="0 -960 960 960"
+      viewBox={controlPaths[name] ? "0 0 24 24" : "0 -960 960 960"}
       aria-hidden="true"
       focusable="false"
     >

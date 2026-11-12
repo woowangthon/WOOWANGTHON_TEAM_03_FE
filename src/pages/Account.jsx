@@ -3,6 +3,8 @@ import { useState } from "react";
 import { authApi, authMode } from "../api/services.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 import { Notice } from "../components/Common.jsx";
+import { PasswordField, TextField } from "../components/Material.jsx";
+import PasswordRules from "../components/PasswordRules.jsx";
 
 export default function Account() {
   const auth = useAuth();
@@ -82,15 +84,13 @@ export default function Account() {
           </div>
         </div>
         <form onSubmit={saveName}>
-          <label>
-            이름
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              autoComplete="name"
-            />
-          </label>
+          <TextField
+            label="이름"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoComplete="name"
+          />
           <p className="fine-print">
             로그인 ID는 변경할 수 없습니다. 이름을 변경해도 로그인은 유지됩니다.
           </p>
@@ -108,41 +108,31 @@ export default function Account() {
           </Notice>
         ) : (
           <form onSubmit={changePassword}>
-            <label>
-              현재 비밀번호
-              <input
-                name="current"
-                type="password"
-                required
-                autoComplete="current-password"
-              />
-            </label>
-            <label>
-              새 비밀번호
-              <input
-                name="new"
-                type="password"
-                required
-                minLength={10}
-                maxLength={30}
-                autoComplete="new-password"
-              />
-            </label>
-            <label>
-              새 비밀번호 확인
-              <input
-                name="confirm"
-                type="password"
-                required
-                minLength={10}
-                maxLength={30}
-                autoComplete="new-password"
-              />
-            </label>
-            <p className="fine-print">
-              10~30자, 대문자·소문자·숫자·허용 특수문자를 포함해야 합니다.
-              서버의 추가 검증이 적용됩니다. 변경 후 다시 로그인해 주세요.
-            </p>
+            <PasswordField
+              label="현재 비밀번호"
+              name="current"
+              required
+              autoComplete="current-password"
+            />
+            <PasswordField
+              label="새 비밀번호"
+              name="new"
+              aria-describedby="account-password-rules"
+              required
+              minLength={10}
+              maxLength={30}
+              autoComplete="new-password"
+            />
+            <PasswordField
+              label="새 비밀번호 확인"
+              name="confirm"
+              aria-describedby="account-password-rules"
+              required
+              minLength={10}
+              maxLength={30}
+              autoComplete="new-password"
+            />
+            <PasswordRules id="account-password-rules" />
             <button className="primary" disabled={busy}>
               비밀번호 변경 후 로그아웃
             </button>
