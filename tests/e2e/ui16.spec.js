@@ -10,7 +10,7 @@ test("service branding and employee navigation expose one request entry and one 
     page.getByText("검사 → 전송 확인 → 답변", { exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "직원으로 체험하기" }).click();
-  await expect(page.locator(".brand")).toContainText("마스킹 어시스턴트");
+  await expect(page.locator(".brand")).toContainText("Mask Assistant");
   await expect(
     page.getByRole("button", { name: "새 요청", exact: true }),
   ).toHaveCount(1);

@@ -375,6 +375,15 @@ test("password mismatch and server rejection stay in the password panel and rema
     .click();
   await expect(alert).toContainText("현재 비밀번호가 올바르지 않습니다.");
   await expect(alert).toBeInViewport({ ratio: 1 });
+  const confirmBox = await panel
+    .getByLabel("새 비밀번호 확인", { exact: true })
+    .boundingBox();
+  const alertBox = await alert.boundingBox();
+  const submitBox = await panel
+    .getByRole("button", { name: "비밀번호 변경 후 로그아웃", exact: true })
+    .boundingBox();
+  expect(alertBox.y).toBeGreaterThanOrEqual(confirmBox.y + confirmBox.height);
+  expect(alertBox.y + alertBox.height).toBeLessThanOrEqual(submitBox.y);
   await expect(page.getByRole("alert")).toHaveCount(1);
   await expect(panel.getByLabel("새 비밀번호", { exact: true })).toHaveValue(
     "ChangedFixture9!",

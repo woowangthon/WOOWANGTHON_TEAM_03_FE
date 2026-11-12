@@ -2,7 +2,7 @@ import Icon from "./Icon.jsx";
 
 const noticeIcons = { info: "info", warning: "warning", error: "error" };
 
-export function Brand({ name = "마스킹 어시스턴트" }) {
+export function Brand({ name = "Mask Assistant" }) {
   return (
     <div className="brand">
       <span className="brand-symbol" aria-hidden="true">
