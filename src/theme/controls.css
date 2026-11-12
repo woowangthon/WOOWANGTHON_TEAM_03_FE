@@ -528,6 +528,9 @@
 .completed-answer .answer {
   margin-top: 0;
 }
+.intake-detail.completed-answer .request-bubble {
+  margin-bottom: 24px;
+}
 .answer-actions {
   display: flex;
   align-items: center;

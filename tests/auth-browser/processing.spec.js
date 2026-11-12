@@ -171,7 +171,9 @@ test("completed view keeps the question above the answer and tools, while more o
   await expect(question).toHaveText(state.row.instruction);
   const questionBox = await question.boundingBox();
   const answerBox = await detail.locator(".markdown-answer").boundingBox();
-  expect(questionBox.y + questionBox.height).toBeLessThanOrEqual(answerBox.y);
+  expect(
+    answerBox.y - questionBox.y - questionBox.height,
+  ).toBeGreaterThanOrEqual(24);
   await expect(
     page.getByRole("button", { name: "새 요청 작성", exact: true }),
   ).toHaveCount(0);

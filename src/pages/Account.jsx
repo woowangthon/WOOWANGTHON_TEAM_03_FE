@@ -109,9 +109,6 @@ export default function Account() {
         </form>
       </section>
       <section className="panel password-panel">
-        <div ref={passwordAlert}>
-          <Notice kind="error">{passwordError}</Notice>
-        </div>
         <div className="panel-title">
           <h2>비밀번호 변경</h2>
           <PasswordRules id="account-password-rules" />
@@ -147,6 +144,11 @@ export default function Account() {
               maxLength={30}
               autoComplete="new-password"
             />
+            {passwordError && (
+              <div ref={passwordAlert}>
+                <Notice kind="error">{passwordError}</Notice>
+              </div>
+            )}
             <button className="primary" disabled={busy}>
               비밀번호 변경 후 로그아웃
             </button>
