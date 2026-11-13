@@ -161,7 +161,7 @@ async function setup(page, initial = "preparing") {
 }
 const statusTag = (page) => page.locator(".intake-detail .state-tag");
 
-test("completed view keeps the question above the answer and tools, while more options preserve recovery", async ({
+test("completed view keeps the question above the answer and only offers deletion in more options", async ({
   page,
 }, testInfo) => {
   const { state } = await setup(page, "completed");
@@ -185,7 +185,7 @@ test("completed view keeps the question above the answer and tools, while more o
     page.getByRole("button", { name: "상태 다시 조회", exact: true }),
   ).toBeHidden();
   await expect(
-    page.getByRole("button", { name: "목록에서 숨기기", exact: true }),
+    page.getByRole("button", { name: "삭제", exact: true }),
   ).toBeHidden();
   await page.screenshot({
     path: testInfo.outputPath("clean-answer.png"),
@@ -201,15 +201,17 @@ test("completed view keeps the question above the answer and tools, while more o
   await expect(
     page.getByRole("button", { name: "상태 다시 조회", exact: true }),
   ).toBeHidden();
-  state.readError = "FORBIDDEN";
   await more.click();
-  await page
-    .getByRole("button", { name: "상태 다시 조회", exact: true })
-    .click();
-  await expect(page.getByRole("alert")).toContainText("FORBIDDEN");
-  await expect(page.locator(".markdown-answer, .request-bubble")).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("button", { name: "삭제", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "삭제", exact: true }),
+  ).toHaveCSS("color", "rgb(186, 26, 26)");
+  await expect(
+    page.getByRole("button", { name: "상태 다시 조회", exact: true }),
+  ).toHaveCount(0);
+  expect(state.hides).toEqual([]);
 });
 
 test("completed request with missing answer keeps visible retry access", async ({
@@ -351,14 +353,14 @@ test("combined code-point preview renders both input sources without normalizing
   await expect(preview.locator("mark").last()).toBeFocused();
 });
 const hideButton = (page) =>
-  page.getByRole("button", { name: "목록에서 숨기기", exact: true });
+  page.getByRole("button", { name: "삭제", exact: true });
 async function beginHide(page) {
   if (await page.locator(".answer-options").count())
     await page.getByLabel("답변 더보기", { exact: true }).click();
   await hideButton(page).click();
 }
 const confirmHideButton = (page) =>
-  page.getByRole("button", { name: "숨기기 확인", exact: true });
+  page.getByRole("button", { name: "삭제", exact: true });
 
 test("completed result copies only the final answer and reports clipboard failure", async ({
   page,
@@ -561,20 +563,8 @@ test("hide confirms intent, refreshes history, closes detail and revokes its PDF
     extraction_status: "ready",
   };
   await page.reload();
-  await page.getByLabel("답변 더보기", { exact: true }).click();
-  await page
-    .getByRole("button", { name: "첨부파일 보기", exact: true })
-    .click();
   await expect(page.locator(".document-card")).toBeVisible();
-  await page.getByLabel("답변 더보기", { exact: true }).click();
-  await page
-    .getByRole("button", { name: "첨부파일 숨기기", exact: true })
-    .click();
-  await expect(page.locator(".document-card")).toHaveCount(0);
-  await page.getByLabel("답변 더보기", { exact: true }).click();
-  await page
-    .getByRole("button", { name: "첨부파일 보기", exact: true })
-    .click();
+  await expect(page.locator(".document-card")).toContainText("synthetic.pdf");
   await page
     .getByRole("button", { name: "PDF 원본 보기", exact: true })
     .click();
@@ -593,11 +583,11 @@ test("hide confirms intent, refreshes history, closes detail and revokes its PDF
   const listsBefore = state.listReads;
   await confirmHideButton(page).dblclick();
   await expect(
-    page.getByRole("button", { name: "숨기는 중…", exact: true }),
+    page.getByRole("button", { name: "삭제 중…", exact: true }),
   ).toBeDisabled();
   release();
   await expect(
-    page.getByText("내 요청 목록에서 숨겼습니다.", { exact: true }),
+    page.getByText("내 요청 목록에서 삭제했습니다.", { exact: true }),
   ).toBeVisible();
   await expect(page).not.toHaveURL(/request=/);
   await expect(page.locator(".intake-detail")).toHaveCount(0);
@@ -641,17 +631,50 @@ test("lost hide response refreshes the list and clears details without resending
   expect(state.hides).toEqual([{}]);
 });
 
-test("hide during approval closes the preview and refreshes history after navigation", async ({
+test("approval with prompt and PDF cannot be deleted until external transmission is cancelled", async ({
   page,
 }) => {
   const { state } = await setup(page, "awaiting_approval");
+  state.row.document = {
+    original_filename: "synthetic.pdf",
+    size_bytes: 100,
+    page_count: 1,
+    extraction_status: "ready",
+  };
+  state.preview = combinedPreviewFixture(state.expiresAt);
+  await page.reload();
   await expect(page.locator(".approval-review")).toBeVisible();
-  await beginHide(page);
+  await expect(hideButton(page)).toHaveCount(0);
   await expect(
-    page.getByText(
-      /숨기면 이 의뢰의 외부 전송을 승인하거나 거절할 수 없습니다/,
-    ),
-  ).toBeVisible();
+    page.getByText("이 요청을 삭제하시겠습니까?", { exact: false }),
+  ).toHaveCount(0);
+  expect(state.hides).toEqual([]);
+  await page
+    .getByRole("button", { name: "외부 전송 거절", exact: true })
+    .click();
+  await expect(statusTag(page)).toHaveText("전송 거절");
+  await beginHide(page);
+  await expect(confirmHideButton(page)).toHaveCSS(
+    "background-color",
+    "rgb(186, 26, 26)",
+  );
+  await confirmHideButton(page).click();
+  await expect(page.locator(".history-title")).toHaveText("최근 요청 0");
+  expect(state.decisions).toEqual(["rejected"]);
+  expect(state.hides).toEqual([{}]);
+});
+
+test("failed requests can be deleted", async ({ page }) => {
+  const { state } = await setup(page, "failed");
+  await beginHide(page);
+  await confirmHideButton(page).click();
+  await expect(page.locator(".history-title")).toHaveText("최근 요청 0");
+  expect(state.hides).toEqual([{}]);
+});
+
+test("deletion refreshes history even after navigation", async ({ page }) => {
+  const { state } = await setup(page, "failed");
+  await beginHide(page);
   let release;
   state.holdHide = new Promise((resolve) => (release = resolve));
   await confirmHideButton(page).click();
@@ -660,8 +683,6 @@ test("hide during approval closes the preview and refreshes history after naviga
   release();
   await expect(page.locator(".history-title")).toHaveText("최근 요청 0");
   await expect(page).toHaveURL(/\/account$/);
-  await expect(page.locator(".approval-review")).toHaveCount(0);
-  expect(state.decisions).toEqual([]);
 });
 
 test("hide permission denial clears the detail without claiming success", async ({
@@ -674,7 +695,7 @@ test("hide permission denial clears the detail without claiming success", async 
   await expect(page.getByRole("alert")).toContainText("FORBIDDEN");
   await expect(page.locator(".request-bubble")).toHaveCount(0);
   await expect(
-    page.getByText("내 요청 목록에서 숨겼습니다.", { exact: true }),
+    page.getByText("내 요청 목록에서 삭제했습니다.", { exact: true }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "내 계정 메뉴", exact: true }),

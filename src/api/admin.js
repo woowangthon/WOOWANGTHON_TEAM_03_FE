@@ -1,12 +1,12 @@
 import { ApiError, createHttpClient } from "./http.js";
 
 export const adminMetrics = [
-  ["total_requests", "전체 요청"],
-  ["detection_count", "탐지 구간"],
+  ["total_requests", "접수된 요청(건)"],
+  ["detection_count", "민감정보가 발견된 곳(곳)"],
   ["warning_requests", "경고 요청"],
-  ["inspection_anomalies", "검사 이상"],
-  ["policy_blocked_requests", "정책 차단"],
-  ["external_sent_confirmed_requests", "외부 전송 확인"],
+  ["inspection_anomalies", "검사가 불완전하거나 실패한 요청(건)"],
+  ["policy_blocked_requests", "보안 정책으로 차단된 요청(건)"],
+  ["external_sent_confirmed_requests", "외부 AI 전송이 확인된 요청(건)"],
 ];
 export { detectionLabels } from "../domain/requests.js";
 export const routeLabels = { local: "사내", external: "외부", blocked: "차단" };
