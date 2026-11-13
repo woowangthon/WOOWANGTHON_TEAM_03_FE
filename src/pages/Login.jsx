@@ -5,6 +5,7 @@ import { authMode } from "../api/services.js";
 import { Brand, Notice } from "../components/Common.jsx";
 import { PasswordField, TextField } from "../components/Material.jsx";
 import Icon from "../components/Icon.jsx";
+import loginPhoto from "../assets/login-factory.png";
 
 export default function Login() {
   const auth = useAuth();
@@ -33,6 +34,7 @@ export default function Login() {
   return (
     <main className="login-page">
       <div className="login-story">
+        <img className="login-photo" src={loginPhoto} alt="" />
         <Brand name="Mask Assistant" />
         <div>
           <h1>

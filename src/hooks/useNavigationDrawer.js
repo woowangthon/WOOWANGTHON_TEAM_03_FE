@@ -4,13 +4,25 @@ const narrowViewport = "(max-width: 839px)";
 const focusableSelector =
   "a[href], button, input, select, textarea, [tabindex]";
 
+function drawerPortals(container) {
+  return [
+    ...container.querySelectorAll('[aria-expanded="true"][aria-controls]'),
+  ]
+    .map((trigger) =>
+      document.getElementById(trigger.getAttribute("aria-controls")),
+    )
+    .filter((panel) => panel && !container.contains(panel));
+}
+
 function focusableElements(container) {
-  return [...container.querySelectorAll(focusableSelector)].filter(
-    (element) =>
-      element.tabIndex >= 0 &&
-      !element.matches(":disabled") &&
-      element.getClientRects().length > 0,
-  );
+  return [container, ...drawerPortals(container)]
+    .flatMap((root) => [...root.querySelectorAll(focusableSelector)])
+    .filter(
+      (element) =>
+        element.tabIndex >= 0 &&
+        !element.matches(":disabled") &&
+        element.getClientRects().length > 0,
+    );
 }
 
 export default function useNavigationDrawer() {
@@ -44,7 +56,11 @@ export default function useNavigationDrawer() {
       (focusableElements(sidebar)[0] || sidebar).focus({ preventScroll: true });
     }
     function containFocus(event) {
-      if (!sidebar.contains(event.target)) focusFirst();
+      if (
+        !sidebar.contains(event.target) &&
+        !drawerPortals(sidebar).some((panel) => panel.contains(event.target))
+      )
+        focusFirst();
     }
     function handleKey(event) {
       if (event.defaultPrevented) return;

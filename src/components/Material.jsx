@@ -92,7 +92,10 @@ export function PasswordField(props) {
 
 // Fixed overlays stay inside the viewport even inside scrolling tables/forms.
 export function useOverlay(open, trigger, panel, dismiss, width) {
-  const [position, setPosition] = useState({ visibility: "hidden" });
+  const [position, setPosition] = useState({
+    position: "fixed",
+    visibility: "hidden",
+  });
   const dismissRef = useRef(dismiss);
   dismissRef.current = dismiss;
   useLayoutEffect(() => {
@@ -105,10 +108,14 @@ export function useOverlay(open, trigger, panel, dismiss, width) {
         width || Math.max(200, anchor.width),
         window.innerWidth - 24,
       );
+      // Measure at the final width, outside document flow, before placing above.
+      panel.current.style.width = `${panelWidth}px`;
       const below = window.innerHeight - anchor.bottom - 12;
       const above = anchor.top - 12;
       const desiredHeight = Math.min(
-        panel.current.scrollHeight,
+        panel.current.scrollHeight +
+          panel.current.offsetHeight -
+          panel.current.clientHeight,
         available,
         360,
       );
@@ -189,11 +196,18 @@ export function Select({
     if (disabled) setOpen(false);
   }, [disabled]);
   useEffect(() => {
-    if (open)
-      document
-        .getElementById(`${controlId}-option-${active}`)
-        ?.scrollIntoView({ block: "nearest" });
-  }, [open, active, controlId]);
+    if (!open || position.visibility !== "visible") return;
+    const menu = panel.current;
+    const option = document.getElementById(`${controlId}-option-${active}`);
+    if (!menu || !option) return;
+    // Scroll only the listbox; scrollIntoView also scrolls the page ancestors.
+    const menuRect = menu.getBoundingClientRect();
+    const optionRect = option.getBoundingClientRect();
+    if (optionRect.top < menuRect.top)
+      menu.scrollTop -= menuRect.top - optionRect.top;
+    else if (optionRect.bottom > menuRect.bottom)
+      menu.scrollTop += optionRect.bottom - menuRect.bottom;
+  }, [open, active, controlId, position]);
   function choose(index) {
     const option = options[index];
     if (!option || option.disabled) return;
@@ -203,7 +217,7 @@ export function Select({
       currentTarget: { value: option.value, name },
     });
     setOpen(false);
-    trigger.current?.focus();
+    trigger.current?.focus({ preventScroll: true });
   }
   function move(direction) {
     for (let step = 1; step <= options.length; step++) {

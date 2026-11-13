@@ -31,8 +31,8 @@ const time = (value) =>
   value
     ? new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })
     : "미기록";
-const count = (value) =>
-  value == null ? "미확정" : `${value.toLocaleString()}건`;
+const count = (value, unit = "건") =>
+  value == null ? "미확정" : `${value.toLocaleString()}${unit}`;
 const warningText = (record) =>
   record.warning_codes.length
     ? record.warning_codes.map(warningLabel).join(" ")
@@ -54,12 +54,12 @@ const statusLabels = {
 };
 const status = (value) => statusLabels[value] || value || "미기록";
 
-function MetricValue({ metric }) {
+function MetricValue({ metric, unit = "건" }) {
   if (metric.status === "complete")
     return (
       <strong>
         {metric.value.toLocaleString()}
-        <small>건</small>
+        <small>{unit}</small>
       </strong>
     );
   return (
@@ -68,8 +68,8 @@ function MetricValue({ metric }) {
         {metric.status === "partial" ? "부분 집계" : "집계 불가"}
       </strong>
       <span className="fine-print">
-        확인된 값 {metric.known_value}건 · 미확정 요청{" "}
-        {metric.unknown_request_count}건
+        확인된 값 {metric.known_value}
+        {unit} · 미확정 요청 {metric.unknown_request_count}건
       </span>
     </>
   );
@@ -83,6 +83,7 @@ function DailyChart({ data }) {
     if (chart.current) chart.current.scrollLeft = chart.current.scrollWidth;
   }, [dates]);
   const [key, setKey] = useState("total_requests");
+  const unit = key === "detection_count" ? "곳" : "건";
   const label = adminMetrics.find(([id]) => id === key)[1];
   const max = Math.max(1, ...data.map((day) => day.metrics[key].known_value));
   const hasUncertain = data.some(
@@ -113,7 +114,7 @@ function DailyChart({ data }) {
         {data
           .map((day) => {
             const metric = day.metrics[key];
-            return `${day.date}: ${metric.status === "complete" ? count(metric.value) : `${metric.status === "partial" ? "부분 집계" : "집계 불가"}, 확인 ${metric.known_value}건, 미확정 요청 ${metric.unknown_request_count}건`}`;
+            return `${day.date}: ${metric.status === "complete" ? count(metric.value, unit) : `${metric.status === "partial" ? "부분 집계" : "집계 불가"}, 확인 ${metric.known_value}${unit}, 미확정 요청 ${metric.unknown_request_count}건`}`;
           })
           .join(". ")}
       </p>
@@ -127,7 +128,7 @@ function DailyChart({ data }) {
         {data.map((day) => {
           const metric = day.metrics[key];
           const known = metric.status !== "unavailable";
-          const description = `${day.date}: ${metric.status === "complete" ? count(metric.value) : `${metric.status === "partial" ? "부분 집계" : "집계 불가"}, 확인 ${metric.known_value}건, 미확정 요청 ${metric.unknown_request_count}건`}`;
+          const description = `${day.date}: ${metric.status === "complete" ? count(metric.value, unit) : `${metric.status === "partial" ? "부분 집계" : "집계 불가"}, 확인 ${metric.known_value}${unit}, 미확정 요청 ${metric.unknown_request_count}건`}`;
           return (
             <div
               className="audit-bar-column"
@@ -883,7 +884,10 @@ export default function AdminOverview({ view = "dashboard" }) {
             {adminMetrics.map(([key, label]) => (
               <div className="metric" key={key} data-testid={`metric-${key}`}>
                 <span>{label}</span>
-                <MetricValue metric={data.summary.metrics[key]} />
+                <MetricValue
+                  metric={data.summary.metrics[key]}
+                  unit={key === "detection_count" ? "곳" : "건"}
+                />
               </div>
             ))}
           </div>

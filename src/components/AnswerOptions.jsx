@@ -1,14 +1,9 @@
 import { useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Icon from "./Icon.jsx";
 import { useOverlay } from "./Material.jsx";
 
-export default function AnswerOptions({
-  disabled,
-  onContext,
-  contextVisible,
-  onRefresh,
-  onHide,
-}) {
+export default function AnswerOptions({ disabled, onDelete }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef(null);
   const panel = useRef(null);
@@ -16,7 +11,7 @@ export default function AnswerOptions({
   const position = useOverlay(open, trigger, panel, () => setOpen(false), 176);
   function choose(action) {
     setOpen(false);
-    trigger.current?.focus();
+    trigger.current?.focus({ preventScroll: true });
     action();
   }
   return (
@@ -25,11 +20,15 @@ export default function AnswerOptions({
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           setOpen(false);
-          trigger.current?.focus();
+          trigger.current?.focus({ preventScroll: true });
         }
       }}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+        if (
+          !event.currentTarget.contains(event.relatedTarget) &&
+          !panel.current?.contains(event.relatedTarget)
+        )
+          setOpen(false);
       }}
     >
       <button
@@ -44,38 +43,25 @@ export default function AnswerOptions({
       >
         <Icon name="more_vert" />
       </button>
-      {open && (
-        <div
-          ref={panel}
-          id={id}
-          className="md-menu answer-options-panel"
-          style={position}
-        >
-          {onContext && (
+      {open &&
+        createPortal(
+          <div
+            ref={panel}
+            id={id}
+            className="md-menu answer-options-panel"
+            style={position}
+          >
             <button
               type="button"
+              className="delete-action"
               disabled={disabled}
-              onClick={() => choose(onContext)}
+              onClick={() => choose(onDelete)}
             >
-              {contextVisible ? "첨부파일 숨기기" : "첨부파일 보기"}
+              삭제
             </button>
-          )}
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => choose(onRefresh)}
-          >
-            상태 다시 조회
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => choose(onHide)}
-          >
-            목록에서 숨기기
-          </button>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

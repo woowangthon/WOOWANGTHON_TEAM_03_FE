@@ -499,11 +499,38 @@ input[type="checkbox"] {
   min-height: 100dvh;
 }
 .login-story {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--md-sys-color-inverse-on-surface);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 32px;
   padding: 48px 56px;
+}
+.login-photo {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.login-story::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--md-sys-color-scrim) 55%, transparent),
+    color-mix(in srgb, var(--md-sys-color-scrim) 40%, transparent) 35%,
+    color-mix(in srgb, var(--md-sys-color-scrim) 85%, transparent)
+  );
+}
+.login-story .brand {
+  color: inherit;
 }
 .login-story h1 {
   font: var(--md-sys-typescale-display-small);
@@ -511,7 +538,7 @@ input[type="checkbox"] {
 .login-story p {
   margin-top: 16px;
   font: var(--md-sys-typescale-body-large);
-  color: var(--md-sys-color-on-surface-variant);
+  color: inherit;
 }
 .story-footer {
   font: var(--md-sys-typescale-label-large);
@@ -1523,6 +1550,11 @@ input:disabled + .attach-button {
 .metric > span:first-child {
   color: var(--md-sys-color-on-surface-variant);
   font: var(--md-sys-typescale-label-large);
+  font-size: clamp(12px, 1vw, 14px);
+  line-height: 1.5;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  min-height: 3em;
 }
 .metric strong {
   font: var(--md-sys-typescale-headline-medium);

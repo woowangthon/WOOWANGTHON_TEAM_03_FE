@@ -45,7 +45,6 @@ function RequestDetail({
   const [message, setMessage] = useState("");
   const [starting, setStarting] = useState(false);
   const [confirmHide, setConfirmHide] = useState(false);
-  const [showContext, setShowContext] = useState(false);
   const [hiding, setHiding] = useState(false);
   const mutation = useRef(false);
   const [pdf, setPdf] = useState(null);
@@ -295,7 +294,15 @@ function RequestDetail({
     }
   }
   async function hideRequest() {
-    if (!confirmHide || !data || loading || busy || mutation.current) return;
+    if (
+      !confirmHide ||
+      !data ||
+      data.state === "awaiting_approval" ||
+      loading ||
+      busy ||
+      mutation.current
+    )
+      return;
     mutation.current = true;
     status.pause();
     setBusy(true);
@@ -385,7 +392,7 @@ function RequestDetail({
               </p>
             </>
           )}
-          {data.document && (!completed || showContext) && (
+          {data.document && (
             <div className="document-card">
               <h2>첨부한 PDF</h2>
               <strong className="file-name">
@@ -512,68 +519,59 @@ function RequestDetail({
               {completed && (
                 <AnswerOptions
                   disabled={busy || loading}
-                  onContext={
-                    data.document
-                      ? () => setShowContext((value) => !value)
-                      : undefined
-                  }
-                  contextVisible={showContext}
-                  onRefresh={refreshStatus}
-                  onHide={() => setConfirmHide(true)}
+                  onDelete={() => setConfirmHide(true)}
                 />
               )}
             </RequestResult>
           )}
-          {(!completed || confirmHide) && (
-            <div className="intake-edit">
-              {confirmHide ? (
-                <>
-                  <p>
-                    목록에서 숨기면 이 의뢰의 상세 화면도 다시 열 수 없습니다.
-                    서버 원본과 관리자 감사 기록은 보관됩니다.
-                  </p>
-                  {["queued", "analyzing", "processing"].includes(
-                    data.state,
-                  ) && (
-                    <p className="fine-print">이미 시작된 처리는 계속됩니다.</p>
-                  )}
-                  {data.state === "awaiting_approval" && (
-                    <p className="fine-print">
-                      숨기면 이 의뢰의 외부 전송을 승인하거나 거절할 수
-                      없습니다.
+          {data.state !== "awaiting_approval" &&
+            (!completed || confirmHide) && (
+              <div className="intake-edit">
+                {confirmHide ? (
+                  <>
+                    <p>
+                      이 요청을 삭제하시겠습니까? 삭제하면 내 요청 목록에서
+                      제거되며 상세 화면을 다시 열 수 없습니다. 서버 원본과
+                      관리자 감사 기록은 보관됩니다.
                     </p>
-                  )}
-                  <div className="button-row">
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => setConfirmHide(false)}
-                    >
-                      돌아가기
-                    </button>
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={busy || loading}
-                      onClick={hideRequest}
-                    >
-                      {hiding ? "숨기는 중…" : "숨기기 확인"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="text-button"
-                  disabled={busy || loading}
-                  onClick={() => setConfirmHide(true)}
-                >
-                  목록에서 숨기기
-                </button>
-              )}
-            </div>
-          )}
+                    {["queued", "analyzing", "processing"].includes(
+                      data.state,
+                    ) && (
+                      <p className="fine-print">
+                        이미 시작된 처리는 계속됩니다.
+                      </p>
+                    )}
+                    <div className="button-row">
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() => setConfirmHide(false)}
+                      >
+                        돌아가기
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        disabled={busy || loading}
+                        onClick={hideRequest}
+                      >
+                        {hiding ? "삭제 중…" : "삭제"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="text-button delete-action"
+                    disabled={busy || loading}
+                    onClick={() => setConfirmHide(true)}
+                  >
+                    삭제
+                  </button>
+                )}
+              </div>
+            )}
         </>
       )}
     </section>
@@ -749,7 +747,7 @@ export default function IntakeWorkspace({
           />
         ) : (
           <section className="welcome">
-            {historyHidden && <Notice>내 요청 목록에서 숨겼습니다.</Notice>}
+            {historyHidden && <Notice>내 요청 목록에서 삭제했습니다.</Notice>}
             <h1>어떤 일을 도와드릴까요?</h1>
             <p>요청을 입력하거나 PDF를 첨부하세요.</p>
           </section>

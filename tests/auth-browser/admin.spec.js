@@ -65,7 +65,7 @@ test("dashboard preserves unknown and partial metrics instead of rendering them 
     "부분 집계",
   );
   await expect(page.getByTestId("metric-detection_count")).toContainText(
-    "확인된 값 2건 · 미확정 요청 1건",
+    "확인된 값 2곳 · 미확정 요청 1건",
   );
   await expect(page.getByTestId("metric-warning_requests")).toContainText(
     "집계 불가",
