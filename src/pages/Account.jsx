@@ -98,6 +98,7 @@ export default function Account() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            maxLength={100}
             autoComplete="name"
           />
           <p className="fine-print">
@@ -124,6 +125,7 @@ export default function Account() {
               label="현재 비밀번호"
               name="current"
               required
+              maxLength={30}
               autoComplete="current-password"
             />
             <PasswordField

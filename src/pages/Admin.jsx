@@ -116,6 +116,7 @@ function UserAction({ action, close, refresh, standalone = false }) {
             name="full_name"
             defaultValue={action.user?.full_name || ""}
             required
+            maxLength={100}
           />
         )}
         {["create", "password"].includes(action.type) && (
