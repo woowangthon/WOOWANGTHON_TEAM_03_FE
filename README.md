@@ -102,6 +102,9 @@ flowchart LR
   AI -- "승인된 요청의 가린 본문만" --> LLM["외부 AI<br/>Anthropic API"]
 ```
 
+<img width="1920" height="885" alt="시스템 아키텍쳐" src="https://github.com/user-attachments/assets/54e39888-c2e4-45b7-8e2c-c924317b8b62" />
+
+
 | 구성 | 실행 위치 | 하는 일 |
 | --- | --- | --- |
 | 화면 (이 저장소) | 브라우저 | 요청 작성, 처리 상태, 전송 승인, 답변 확인, 관리자 감사·통계 |
