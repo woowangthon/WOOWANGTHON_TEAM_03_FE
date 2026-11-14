@@ -9,10 +9,9 @@
 | 항목 | 링크 |
 | --- | --- |
 | 서비스 | https://chochu.certcbnu.kr |
-| 테스트 계정 | 최종 제출 폼 참고 |
-| 시연 영상 | 제출 전 추가 |
-| 팀 Notion | 제출 전 추가 |
-| 저장소 | [FE](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_FE) (이 저장소) · [BE](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_BE) · [AI](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_AI) |
+| 테스트 영상 | (https://www.youtube.com/watch?v=WgrrLpeLb4s&feature=youtu.be) |
+| 팀 Notion | (https://app.notion.com/p/HQ-2ff3c6fc5e82820a9cf301ebe257db6f?source=copy_link) |
+| 저장소 | [FE](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_FE) · [BE](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_BE) · [AI](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_AI) |
 
 ## 1. 문제
 
