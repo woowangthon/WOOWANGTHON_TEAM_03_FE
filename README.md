@@ -8,7 +8,7 @@
 
 | 항목 | 링크 |
 | --- | --- |
-| 서비스 | https://chochu.certcbnu.kr/ (실제 서버 연결 모드로 배포) |
+| 서비스 | https://chochu.certcbnu.kr |
 | 테스트 계정 | 최종 제출 폼 참고 |
 | 시연 영상 | 제출 전 추가 |
 | 팀 Notion | 제출 전 추가 |
