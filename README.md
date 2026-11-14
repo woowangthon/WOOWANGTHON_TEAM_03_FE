@@ -61,15 +61,18 @@ AI를 쓰려는 수요는 이미 크고, 금지해도 몰래 쓰는 일이 생�
 
 ## 3. 기존 방식·서비스와 비교
 
-| 서비스 | 원문을 보는 곳 | 도입 | 민감정보가 있으면 | 대외비 문서 | 보내기 전 확인 |
-| --- | --- | --- | --- | --- | --- |
-| 외부 AI 사용 금지 (현재) | 없음. 몰래 쓰면 외부 AI | 해당 없음 | AI를 못 씀 | AI를 못 씀 | 없음 |
-| ChatGPT Enterprise | OpenAI 클라우드 | 계약 후 바로 사용 | 그대로 보냄 (학습 미사용·암호화) | 외부로 보냄 | 없음 |
-| 파수 AI-R DLP | 구축 환경, 허용된 요청은 외부 AI | 보안 솔루션 구축 | 정책에 따라 차단·허용 | 정책에 따라 차단 | 관리자 알림 |
-| Skyflow | Skyflow 클라우드 또는 고객 클라우드 계정 | 개발팀이 API 연동 | 토큰으로 바꿔 보내고 응답 복원 | 찾은 값만 바꾸고 본문은 외부로 | 공개 자료에 없음 |
-| **마스크 어시스턴트** | 직접 운영하는 서버 (사내 설치 가능) | 웹 서비스 설치 | 가려서 보내고 답변 복원 | 사내 모델이 답변 | 직원 승인 |
+기존 방식은 외부 AI를 막아 일을 못 하게 하거나, 원문을 그대로 보내거나, 개발팀이 있어야 쓸 수 있습니다. 마스크 어시스턴트는 설치해서 바로 쓰고, 대외비 문서는 사내 모델로 처리하고, 나머지는 가린 뒤 직원이 확인하고 보냅니다.
 
-다른 서비스는 아래 출처의 공개 자료 기준이며, 각 서비스의 모든 기능을 담지는 않았습니다. 마스크 어시스턴트의 시연 구성은 GCP 서버와 연구실 PC입니다.
+| 기준 | ChatGPT Enterprise | 파수 AI-R DLP | Skyflow | **마스크 어시스턴트** |
+| --- | --- | --- | --- | --- |
+| 회사 안에 설치 가능 | ❌ OpenAI 클라우드 | ❌ | ❌ 클라우드 배포만 | ✅ |
+| 대외비 문서를 밖으로 보내지 않고 AI 사용 | ❌ 원문 전송 | ❌ 차단 또는 가린 본문 전송 | ❌ 가린 본문 전송 | ✅ 사내 모델이 답변 |
+| 개발팀 없이 바로 사용 | ✅ | ✅ | ❌ API 연동 필요 | ✅ |
+| 보내기 전 직원 확인 | ❌ | ❌ 관리자 알림만 | ❌ | ✅ |
+| 가린 뒤 답변을 원래 값으로 복원 | ❌ 가리지 않음 | ❌ | ✅ | ✅ |
+| **한 줄 요약** | 원문 외부 전송 | 차단, 또는 복원 없는 가림 | 개발 필요, 본문 외부 전송 | **설치 즉시 사용, 대외비 사내 처리** |
+
+다른 서비스는 아래 출처의 공개 자료 기준이며, 마스크 어시스턴트의 시연 구성은 GCP 서버와 연구실 PC입니다.
 
 ### 차별점
 
@@ -87,6 +90,7 @@ AI를 쓰려는 수요는 이미 크고, 금지해도 몰래 쓰는 일이 생�
 - OpenAI, [Business data privacy, security, and compliance](https://openai.com/business-data/)
 - 보안뉴스, [파수 'AI-R DLP' 출시 보도](http://www.boannews.com/news/articleView.html?idxno=124138) (2023-11-27)
 - 보안뉴스, [파수 N2SF 반영 'AI-R DLP' 보도](http://www.boannews.com/news/articleView.html?idxno=141006) (2025-12-17)
+- ZDNet Korea, [파수 AI 'AI-R DLP' 수상 보도](https://zdnet.co.kr/view/?no=20261013150254) (2026-10-13, 전송 거부 또는 마스킹 처리)
 - Skyflow, [Deployment models](https://docs.skyflow.com/docs/fundamentals/deployment-models), [De-identify and protect sensitive data](https://docs.skyflow.com/docs/de-identification)
 - Kong, [Skyflow De-identify 플러그인 문서](https://developer.konghq.com/plugins/skyflow-ai-data-control/)
 
