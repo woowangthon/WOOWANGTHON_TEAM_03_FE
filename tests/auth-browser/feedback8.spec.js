@@ -7,17 +7,29 @@ for (const viewport of [
   { width: 1440, height: 900 },
   { width: 390, height: 844 },
 ]) {
-  test(`login photo loads and account popup stays anchored at ${viewport.width}px`, async ({
+  test(`login branding loads and account popup stays anchored at ${viewport.width}px`, async ({
     page,
   }, testInfo) => {
     await page.setViewportSize(viewport);
     await installAuthFixture(page);
     await page.goto("/");
-    const photo = page.locator(".login-photo");
-    await expect(photo).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "문서 속 민감정보를 먼저 살펴볼게요.",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "마스킹 내용을 확인하고, 승인한 내용으로 AI와 작업하세요.",
+      ),
+    ).toBeVisible();
+    const brandIcon = page.locator(".brand-symbol");
     await expect
-      .poll(() => photo.evaluate((image) => image.naturalWidth))
+      .poll(() => brandIcon.evaluate((image) => image.naturalWidth))
       .toBeGreaterThan(0);
+    expect(
+      await page.locator('link[rel="icon"]').evaluate((link) => link.href),
+    ).toBe(await brandIcon.evaluate((image) => image.currentSrc));
     await expect(page.getByLabel("로그인 ID", { exact: true })).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
@@ -101,12 +113,14 @@ test("dashboard uses descriptive metric labels and detection units", async ({
   await page.goto("/admin");
   for (const [key, label] of [
     ["total_requests", "접수된 요청(건)"],
-    ["detection_count", "민감정보가 발견된 곳(곳)"],
+    ["detection_count", "민감정보가 발견된 곳"],
     ["inspection_anomalies", "검사가 불완전하거나 실패한 요청(건)"],
     ["policy_blocked_requests", "보안 정책으로 차단된 요청(건)"],
     ["external_sent_confirmed_requests", "외부 AI 전송이 확인된 요청(건)"],
   ])
-    await expect(page.getByTestId(`metric-${key}`)).toContainText(label);
+    await expect(
+      page.getByTestId(`metric-${key}`).getByText(label, { exact: true }),
+    ).toBeVisible();
   await expect(page.getByTestId("metric-detection_count")).toContainText("곳");
   await page.screenshot({
     path: testInfo.outputPath("dashboard.png"),
