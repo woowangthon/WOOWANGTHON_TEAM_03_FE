@@ -493,6 +493,9 @@ input[type="checkbox"] {
 }
 .login-story {
   background: var(--md-sys-color-secondary-container);
+  background-image: url("./assets/login-paper.svg");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
   color: var(--md-sys-color-on-secondary-container);
   word-break: keep-all;
   display: flex;
