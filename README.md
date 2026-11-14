@@ -9,8 +9,8 @@
 | 항목 | 링크 |
 | --- | --- |
 | 서비스 | https://chochu.certcbnu.kr |
-| 테스트 영상 | (https://www.youtube.com/watch?v=WgrrLpeLb4s&feature=youtu.be) |
-| 팀 Notion | (https://app.notion.com/p/HQ-2ff3c6fc5e82820a9cf301ebe257db6f?source=copy_link) |
+| 테스트 영상 | https://www.youtube.com/watch?v=WgrrLpeLb4s&feature=youtu.be |
+| 팀 Notion | https://app.notion.com/p/HQ-2ff3c6fc5e82820a9cf301ebe257db6f?source=copy_link |
 | 저장소 | [FE](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_FE) · [BE](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_BE) · [AI](https://github.com/woowangthon/WOOWANGTHON_TEAM_03_AI) |
 
 ## 1. 문제
