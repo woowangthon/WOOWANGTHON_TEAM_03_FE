@@ -5,7 +5,6 @@ import { authMode } from "../api/services.js";
 import { Brand, Notice } from "../components/Common.jsx";
 import { PasswordField, TextField } from "../components/Material.jsx";
 import Icon from "../components/Icon.jsx";
-import loginPhoto from "../assets/login-factory.png";
 
 export default function Login() {
   const auth = useAuth();
@@ -34,19 +33,10 @@ export default function Login() {
   return (
     <main className="login-page">
       <div className="login-story">
-        <img className="login-photo" src={loginPhoto} alt="" />
         <Brand name="Mask Assistant" />
         <div>
-          <h1>
-            좋은 생각에 집중하세요.
-            <br />
-            민감정보는 먼저 살필게요.
-          </h1>
-          <p>
-            문서 속 민감정보를 먼저 확인하고,
-            <br />
-            내가 승인한 내용으로 AI와 일합니다.
-          </p>
+          <h1>문서 속 민감정보를 먼저 살펴볼게요.</h1>
+          <p>마스킹 내용을 확인하고, 승인한 내용으로 AI와 작업하세요.</p>
         </div>
       </div>
       <section className="login-form">

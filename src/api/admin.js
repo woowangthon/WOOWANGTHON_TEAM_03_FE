@@ -2,7 +2,7 @@ import { ApiError, createHttpClient } from "./http.js";
 
 export const adminMetrics = [
   ["total_requests", "접수된 요청(건)"],
-  ["detection_count", "민감정보가 발견된 곳(곳)"],
+  ["detection_count", "민감정보가 발견된 곳"],
   ["warning_requests", "경고 요청"],
   ["inspection_anomalies", "검사가 불완전하거나 실패한 요청(건)"],
   ["policy_blocked_requests", "보안 정책으로 차단된 요청(건)"],
