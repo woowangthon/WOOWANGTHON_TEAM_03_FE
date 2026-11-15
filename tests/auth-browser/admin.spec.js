@@ -56,19 +56,20 @@ test("audit explains failures and warnings separately from delivery confirmation
   await expect(page.locator("body")).not.toContainText("SECRET");
 });
 
-test("dashboard preserves unknown and partial metrics instead of rendering them as actual zero", async ({
+test("dashboard cards show confirmed counts and the chart retains inspection coverage", async ({
   page,
 }) => {
   const { state } = await installAudit(page);
   await page.goto("/admin");
-  await expect(page.getByTestId("metric-detection_count")).toContainText(
-    "부분 집계",
+  await expect(page).toHaveTitle("Mask Assistant");
+  await expect(page.getByTestId("metric-detection_count")).toHaveText(
+    "민감정보가 발견된 곳2곳",
   );
-  await expect(page.getByTestId("metric-detection_count")).toContainText(
-    "확인된 값 2곳 · 미확정 요청 1건",
+  await expect(page.getByTestId("metric-warning_requests")).toHaveText(
+    "경고 요청0건",
   );
-  await expect(page.getByTestId("metric-warning_requests")).toContainText(
-    "집계 불가",
+  await expect(page.getByTestId("metric-inspection_anomalies")).toHaveText(
+    "검사가 불완전하거나 실패한 요청(건)0건",
   );
   await expect(
     page.getByTestId("metric-policy_blocked_requests"),

@@ -65,6 +65,47 @@ test("real client logs in, restores its session and logs out without exposing em
   expect(state.unexpected).toEqual([]);
 });
 
+test("user search preserves Korean composition, caret edits and the applied query", async ({
+  page,
+}) => {
+  await installAuthFixture(page, { signedIn: admin });
+  await page.goto("/admin/users?status=all");
+  const search = page.getByRole("textbox", { name: "사용자 검색" });
+  const dots = page.locator("td .status-dot");
+  await expect(dots).toHaveCount(2);
+  const colors = await dots.evaluateAll((nodes) =>
+    nodes.map((node) => getComputedStyle(node).backgroundColor),
+  );
+  expect(colors[0]).not.toBe(colors[1]);
+  await search.focus();
+  const ime = await page.context().newCDPSession(page);
+  for (const text of ["ㅅ", "시", "시험"]) {
+    await ime.send("Input.imeSetComposition", {
+      text,
+      selectionStart: text.length,
+      selectionEnd: text.length,
+    });
+    await expect(search).toHaveValue(text);
+    expect(new URL(page.url()).searchParams.has("q")).toBe(false);
+  }
+  await ime.send("Input.insertText", { text: "시험" });
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("q"))
+    .toBe("시험");
+  await expect(
+    page.getByRole("cell", { name: employee.username }),
+  ).toBeVisible();
+  await search.press("Home");
+  await search.pressSequentially("Ab12");
+  await expect(search).toHaveValue("Ab12시험");
+  await search.press("Backspace");
+  await expect(search).toHaveValue("Ab1시험");
+  await expect(search).toBeFocused();
+  await search.fill("");
+  await expect(dots).toHaveCount(2);
+  expect(new URL(page.url()).searchParams.has("q")).toBe(false);
+});
+
 test("admin account operations use the contract and disabled users cannot be edited", async ({
   page,
 }) => {

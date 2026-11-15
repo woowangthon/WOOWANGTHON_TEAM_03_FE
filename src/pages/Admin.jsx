@@ -5,6 +5,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useNavigationType,
   useParams,
   useSearchParams,
 } from "react-router-dom";
@@ -160,12 +161,30 @@ function AdminHome({ children, title = "보안 현황" }) {
   );
 }
 
+function AccountStatus({ active }) {
+  return (
+    <span>
+      <span
+        className={active ? "status-dot" : "status-dot inactive"}
+        aria-hidden="true"
+      />
+      {active ? "활성" : "비활성"}
+    </span>
+  );
+}
+
 function Users() {
   const auth = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const q = params.get("q") || "";
+  const [searchText, setSearchText] = useState(q);
+  const composing = useRef(false);
+  const navigationType = useNavigationType();
+  useEffect(() => {
+    if (navigationType !== "REPLACE") setSearchText(q);
+  }, [navigationType, location.key, q]);
   const status = ["active", "inactive", "all"].includes(params.get("status"))
     ? params.get("status")
     : "active";
@@ -259,9 +278,22 @@ function Users() {
           className="search-label"
           label="사용자 검색"
           placeholder="ID 또는 이름 검색"
-          value={q}
+          value={searchText}
           maxLength={100}
-          onChange={(event) => update({ q: event.target.value, page: 1 }, true)}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setSearchText(value);
+            if (!composing.current) update({ q: value, page: 1 }, true);
+          }}
+          onCompositionStart={() => {
+            composing.current = true;
+          }}
+          onCompositionEnd={(event) => {
+            composing.current = false;
+            const value = event.currentTarget.value;
+            setSearchText(value);
+            update({ q: value, page: 1 }, true);
+          }}
         />
         <Select
           label="계정 상태"
@@ -309,8 +341,7 @@ function Users() {
                   <td>{user.username}</td>
                   <td>{user.full_name}</td>
                   <td>
-                    <span className="status-dot" />
-                    {user.is_active ? "활성" : "비활성"}
+                    <AccountStatus active={user.is_active} />
                   </td>
                   <td>
                     <button
@@ -543,7 +574,9 @@ function UserProfile() {
                 </div>
                 <div>
                   <dt>상태</dt>
-                  <dd>{user.is_active ? "활성" : "비활성"}</dd>
+                  <dd>
+                    <AccountStatus active={user.is_active} />
+                  </dd>
                 </div>
               </dl>
               <div className="button-row">

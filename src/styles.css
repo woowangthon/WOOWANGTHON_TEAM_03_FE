@@ -386,6 +386,9 @@ input[type="checkbox"] {
   background: var(--md-sys-color-primary);
   vertical-align: middle;
 }
+.status-dot.inactive {
+  background: var(--md-sys-color-error);
+}
 .notice {
   position: relative;
   min-height: 48px;
