@@ -54,11 +54,17 @@ const statusLabels = {
 };
 const status = (value) => statusLabels[value] || value || "미기록";
 
-function MetricValue({ metric, unit = "건" }) {
-  if (metric.status === "complete")
+const confirmedCountCards = new Set([
+  "detection_count",
+  "warning_requests",
+  "inspection_anomalies",
+]);
+
+function MetricValue({ metric, unit = "건", confirmedOnly }) {
+  if (confirmedOnly || metric.status === "complete")
     return (
       <strong>
-        {metric.value.toLocaleString()}
+        {confirmedOnly ? metric.known_value : metric.value.toLocaleString()}
         <small>{unit}</small>
       </strong>
     );
@@ -886,6 +892,7 @@ export default function AdminOverview({ view = "dashboard" }) {
                 <span>{label}</span>
                 <MetricValue
                   metric={data.summary.metrics[key]}
+                  confirmedOnly={confirmedCountCards.has(key)}
                   unit={key === "detection_count" ? "곳" : "건"}
                 />
               </div>
