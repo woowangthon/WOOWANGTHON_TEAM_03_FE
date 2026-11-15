@@ -69,7 +69,7 @@ test("dashboard cards show confirmed counts and the chart retains inspection cov
     "경고 요청0건",
   );
   await expect(page.getByTestId("metric-inspection_anomalies")).toHaveText(
-    "검사가 불완전하거나 실패한 요청(건)0건",
+    "검사가 불완전하거나 실패한 요청0건",
   );
   await expect(
     page.getByTestId("metric-policy_blocked_requests"),
