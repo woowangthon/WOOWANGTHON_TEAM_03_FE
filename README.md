@@ -127,6 +127,63 @@ flowchart LR
 
 시간이 걸리는 AI 처리는 요청 접수와 분리해 백그라운드에서 실행하고, 화면은 상태를 조회해 갱신합니다.
 
+### 전체 코드 구조
+
+코드는 저장소 세 개로 나뉩니다. 요청은 FE 화면 → BE `gateway/` → AI `server.py` 순서로 흐릅니다. BE는 AI의 `/analyze`로 검사하고, 경로에 따라 `/answer_local`을 부르거나 직원 승인 뒤 `/answer_external`을 부릅니다.
+
+```text
+WOOWANGTHON_TEAM_03_FE/         화면 (React + Vite)
+├─ src/
+│  ├─ pages/                    로그인, 직원 작업 공간, 내 계정, 관리자 화면
+│  ├─ components/               승인 검토, 답변 표시 같은 화면 요소
+│  ├─ api/                      HTTP·CSRF, 인증·접수·관리자 API, 연결 모드, 체험용 가상 응답
+│  ├─ auth/                     로그인 사용자와 세션 만료 관리
+│  ├─ hooks/                    처리 상태 조회, 좁은 화면 메뉴
+│  ├─ domain/                   요청 상태 이름, 요청문·강조 구간 검증
+│  └─ theme/                    Material 3 디자인 토큰
+├─ tests/                       API·상태 단위 검사, 브라우저 검사 (Playwright)
+├─ test_docs/                   시연 문서 원문 5개와 정답표 5개 (합성 문서)
+└─ docs/                        UI 검증 기록
+
+WOOWANGTHON_TEAM_03_BE/         백엔드 (Django REST + PostgreSQL)
+├─ compose.yaml, Dockerfile     Django와 PostgreSQL 컨테이너 구성
+├─ backend/
+│  ├─ config/                   Django 설정과 URL 구성
+│  ├─ accounts/                 로그인, 역할·권한, 계정 발급·변경·비활성화
+│  ├─ gateway/                  요청 처리
+│  │  ├─ views.py, intake_*.py  PDF·요청 접수와 입력 검증
+│  │  ├─ pdf.py, storage.py     PDF 글자 추출, 비공개 PDF 저장
+│  │  ├─ processing.py          모델 서비스로 검사·답변하고 결과 저장
+│  │  ├─ model_client.py        연구실 PC 모델 서비스 호출
+│  │  ├─ approval_*.py          승인 대기 조회, 승인·거절 기록, 30분 만료
+│  │  ├─ request_*.py           본인 이력 목록과 숨김
+│  │  ├─ admin_*.py             관리자 감사 목록·상세·통계
+│  │  └─ management/commands/   대기 요청 처리, 만료 정리 명령
+│  └─ scripts/                  배포 서버의 인증·접수·처리 흐름 확인
+└─ docs/                        요청 접수 API, AI 처리 흐름 문서
+
+WOOWANGTHON_TEAM_03_AI/         모델 서비스 (FastAPI + Ollama, 연구실 PC)
+├─ src/
+│  ├─ server.py                 FastAPI 서비스. 백엔드는 /analyze, /answer_local, /answer_external 호출
+│  ├─ extract.py, common.py     PDF 글자 추출, Ollama 호출과 공통 자료형
+│  ├─ detect_rules.py           정규식 26개와 회사명·사업명 사전
+│  ├─ ner_detect.py             한국어 이름 인식
+│  ├─ detect_llm.py             30B 구간 추출과 원문 포함 검사
+│  ├─ detect.py                 탐지 결과 병합, 긴 글 분할
+│  ├─ route.py                  tev1 사내·외부·차단 확률
+│  ├─ decide.py                 결정 규칙 (차단, 내부 전용 문서 사내 강제, 승인 필요 여부)
+│  ├─ mask.py                   자리표 가림과 복원
+│  ├─ answer_external.py        전송 직전 유출 검사, 외부 AI 호출, 답변 복원
+│  ├─ eval.py                   재현율·오탐·지연 평가
+│  ├─ data/                     평가 세트, 시연 문서, 수락 검사, 사전
+│  └─ tools/                    점검·평가·실험 스크립트
+├─ tests/                       순수 함수 단위 테스트 (push·PR마다 GitHub Actions)
+├─ ops/                         연구실 PC 상시 가동 스크립트
+└─ docs/                        모델 서비스 API 문서
+```
+
+BE 테스트는 `accounts/`와 `gateway/` 안의 `test_*.py`에 있습니다. 파일별 자세한 설명은 각 저장소 README에 있습니다.
+
 ## 5. 기술 선택 이유
 
 | 기술 | 쓰는 곳 | 고른 이유 |
@@ -256,11 +313,13 @@ src/
   auth/         로그인 사용자와 세션 만료 관리
   components/   공통 표시 요소
   domain/       화면 상태 이름, 요청문·강조 구간 검증
+  hooks/        처리 상태 조회, 좁은 화면 메뉴
   pages/        로그인, 요청, 계정, 관리자 화면
   theme/        Material 3 디자인 토큰(색 역할, 글자 크기, 모서리)
   App.jsx       화면 이동과 공통 틀
   styles.css    토큰만 사용하는 화면 스타일
 tests/          API·상태 단위 검사와 브라우저 검사
+test_docs/      시연 문서 원문과 정답표 (합성 문서)
 ```
 
 ### 데이터 처리 원칙
