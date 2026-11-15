@@ -126,4 +126,19 @@ test("dashboard uses descriptive metric labels and detection units", async ({
     path: testInfo.outputPath("dashboard.png"),
     fullPage: true,
   });
+  const selector = page.getByRole("combobox", { name: "차트 지표" });
+  await expect(selector).toHaveText("접수된 요청");
+  await selector.click();
+  const options = page.getByRole("listbox").getByRole("option");
+  await expect(options).toHaveText([
+    "접수된 요청",
+    "민감정보가 발견된 곳",
+    "경고 요청",
+    "검사가 불완전하거나 실패한 요청",
+    "보안 정책으로 차단된 요청",
+    "외부 AI 전송이 확인된 요청",
+  ]);
+  await page.screenshot({ path: testInfo.outputPath("chart-metrics.png") });
+  await options.getByText("보안 정책으로 차단된 요청", { exact: true }).click();
+  await expect(selector).toHaveText("보안 정책으로 차단된 요청");
 });
