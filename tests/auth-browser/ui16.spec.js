@@ -259,7 +259,7 @@ test("quick period control changes server dates and the daily chart has no dupli
   const { state } = await installAudit(page);
   await page.goto("/admin");
   await expect(
-    page.getByRole("img", { name: "접수된 요청(건) 일별 추이" }),
+    page.getByRole("img", { name: "접수된 요청 일별 추이" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "최근 1일", exact: true }).click();
   await openFilters(page);
@@ -270,7 +270,7 @@ test("quick period control changes server dates and the daily chart has no dupli
   expect(last.date_from).toBe(last.date_to);
   await expect(page.getByText(/일별 수치\s*표/)).toHaveCount(0);
   await expect(
-    page.getByRole("img", { name: "접수된 요청(건) 일별 추이" }),
+    page.getByRole("img", { name: "접수된 요청 일별 추이" }),
   ).toBeVisible();
 });
 
@@ -389,7 +389,7 @@ test("thirty-day charts initially show the latest date and retain user scroll ac
   await expect(page.getByTestId("metric-total_requests")).toBeVisible();
   await page.getByRole("button", { name: "최근 30일", exact: true }).click();
   const chart = page.getByRole("img", {
-    name: "접수된 요청(건) 일별 추이",
+    name: "접수된 요청 일별 추이",
     exact: true,
   });
   await expect(chart.locator(".audit-bar-column")).toHaveCount(30);
