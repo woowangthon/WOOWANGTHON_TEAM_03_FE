@@ -889,7 +889,7 @@ export default function AdminOverview({ view = "dashboard" }) {
           <div className="metrics">
             {adminMetrics.map(([key, label]) => (
               <div className="metric" key={key} data-testid={`metric-${key}`}>
-                <span>{label}</span>
+                <span>{label.replace(/\(건\)$/, "")}</span>
                 <MetricValue
                   metric={data.summary.metrics[key]}
                   confirmedOnly={confirmedCountCards.has(key)}

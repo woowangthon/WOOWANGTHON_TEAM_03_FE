@@ -112,11 +112,11 @@ test("dashboard uses descriptive metric labels and detection units", async ({
   await installAudit(page);
   await page.goto("/admin");
   for (const [key, label] of [
-    ["total_requests", "접수된 요청(건)"],
+    ["total_requests", "접수된 요청"],
     ["detection_count", "민감정보가 발견된 곳"],
-    ["inspection_anomalies", "검사가 불완전하거나 실패한 요청(건)"],
-    ["policy_blocked_requests", "보안 정책으로 차단된 요청(건)"],
-    ["external_sent_confirmed_requests", "외부 AI 전송이 확인된 요청(건)"],
+    ["inspection_anomalies", "검사가 불완전하거나 실패한 요청"],
+    ["policy_blocked_requests", "보안 정책으로 차단된 요청"],
+    ["external_sent_confirmed_requests", "외부 AI 전송이 확인된 요청"],
   ])
     await expect(
       page.getByTestId(`metric-${key}`).getByText(label, { exact: true }),
